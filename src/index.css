@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-ios-bg: #F2F2F7;
+  --color-ios-card: #FFFFFF;
+  --color-ios-blue: #007AFF;
+  --color-ios-gray: #8E8E93;
+  --color-ios-label: #1C1C1E;
+  --color-ios-secondary: #F2F2F7;
+  
+  --color-brand-start: #FF6B00;
+  --color-brand-end: #FF9500;
+  
+  --shadow-ios: 0 2px 8px rgba(0,0,0,0.04);
+  --shadow-ios-lg: 0 10px 30px rgba(0,0,0,0.08);
+}
+
+@layer base {
+  body {
+    @apply antialiased bg-[#F2F2F7] text-ios-label selection:bg-ios-blue/20 selection:text-ios-blue min-h-screen;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(0, 122, 255, 0.03) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(255, 107, 0, 0.03) 0px, transparent 50%);
+  }
+  
+  h1, h2, h3 {
+    @apply tracking-tight font-display font-bold;
+  }
+}
+
+@layer components {
+  .ios-card {
+    @apply bg-ios-card rounded-[2.5rem] shadow-ios border border-black/[0.03] overflow-hidden transition-all duration-300;
+  }
+  
+  .ios-card-hover {
+    @apply hover:shadow-ios-lg hover:-translate-y-1;
+  }
+
+  .ios-btn-primary {
+    @apply bg-linear-to-br from-brand-start to-brand-end text-white font-bold rounded-2xl px-6 py-3.5 sm:px-8 sm:py-4 hover:brightness-110 active:scale-95 transition-all duration-300 shadow-lg shadow-brand-start/20;
+  }
+
+  .ios-btn-secondary {
+    @apply bg-white text-ios-label font-bold rounded-2xl px-6 py-3.5 sm:px-8 sm:py-4 hover:bg-ios-secondary active:scale-95 transition-all duration-300 border border-black/[0.05] shadow-sm;
+  }
+
+  .glass {
+    @apply bg-white/80 backdrop-blur-2xl border-b border-black/[0.05];
+  }
+
+  .glass-card {
+    @apply bg-white/60 backdrop-blur-xl border border-white/40 shadow-ios;
+  }
+
+  .nav-item-active {
+    @apply bg-ios-blue text-white shadow-lg shadow-ios-blue/20;
+  }
+
+  .badge {
+    @apply px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.1);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.2);
+}

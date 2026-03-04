@@ -1,0 +1,7 @@
+{
+  "name": "ReMatch - Smart Used Marketplace",
+  "description": "A matchmaking platform for used items connecting sellers with specific buyer requests.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
