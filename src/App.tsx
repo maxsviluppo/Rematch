@@ -33,6 +33,33 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Item, Request, Proposal } from './types';
 import { notificationService } from './services/NotificationService';
 
+// --- LOCAL STORAGE DATABASE SIMULATION ---
+const STORAGE_KEYS = {
+  ITEMS: 'rematch_items',
+  REQUESTS: 'rematch_requests',
+  PROPOSALS: 'rematch_proposals',
+  FAVORITES: 'rematch_favorites'
+};
+
+const getLocalData = (key: string) => {
+  const data = localStorage.getItem(key);
+  return data ? JSON.parse(data) : [];
+};
+
+const setLocalData = (key: string, data: any) => {
+  localStorage.setItem(key, JSON.stringify(data));
+};
+
+// Initial Seed Data if empty
+if (getLocalData(STORAGE_KEYS.ITEMS).length === 0) {
+  const initialItems = [
+    { id: 1, seller_id: 'other', title: 'iPhone 15 Pro', description: 'Come nuovo, 256GB', price: 950, location: 'Milano', category: 'Elettronica', status: 'available', image_url: 'https://picsum.photos/seed/iphone/400/300', created_at: new Date().toISOString() },
+    { id: 2, seller_id: 'other', title: 'MacBook Air M2', description: '8GB RAM, 256GB SSD', price: 1100, location: 'Roma', category: 'Elettronica', status: 'available', image_url: 'https://picsum.photos/seed/macbook/400/300', created_at: new Date().toISOString() },
+    { id: 3, seller_id: 'other', title: 'Tavolo in Legno', description: 'Tavolo da pranzo artigianale', price: 300, location: 'Torino', category: 'Casa', status: 'available', image_url: 'https://picsum.photos/seed/table/400/300', created_at: new Date().toISOString() }
+  ];
+  setLocalData(STORAGE_KEYS.ITEMS, initialItems);
+}
+
 const USER_ID = "user_123"; // Mock user ID for demo
 
 const CATEGORIES = ['Tutte', 'Elettronica', 'Abbigliamento', 'Casa', 'Sport', 'Libri', 'Altro'];
@@ -112,7 +139,7 @@ export default function App() {
   const handleManualMatch = async () => {
     setLoading(true);
     try {
-      await fetch('/api/match', { method: 'POST' });
+      runMatching();
       await fetchData();
     } catch (err) {
       console.error(err);
@@ -124,34 +151,106 @@ export default function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (searchQuery) params.append('q', searchQuery);
-      if (selectedCategory !== 'Tutte') params.append('category', selectedCategory);
+      // Local Storage Implementation
+      let allItems: Item[] = getLocalData(STORAGE_KEYS.ITEMS);
       
-      const itemsRes = await fetch(`/api/items?${params.toString()}`);
-      const itemsData = await itemsRes.json();
-      setItems(itemsData);
+      // Filter items
+      if (searchQuery || selectedCategory !== 'Tutte') {
+        allItems = allItems.filter(item => {
+          const matchesSearch = !searchQuery || 
+            item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            item.description.toLowerCase().includes(searchQuery.toLowerCase());
+          const matchesCategory = selectedCategory === 'Tutte' || item.category === selectedCategory;
+          return matchesSearch && matchesCategory;
+        });
+      }
+      setItems(allItems);
 
-      const propRes = await fetch(`/api/proposals/${USER_ID}`);
-      const propData = await propRes.json();
-      setProposals(propData);
+      // Proposals
+      const allProposals: any[] = getLocalData(STORAGE_KEYS.PROPOSALS);
+      const userProposals = allProposals
+        .filter(p => {
+          const reqs = getLocalData(STORAGE_KEYS.REQUESTS);
+          const r = reqs.find((req: any) => req.id === p.request_id);
+          return r && r.buyer_id === USER_ID;
+        })
+        .map(p => {
+          const item = getLocalData(STORAGE_KEYS.ITEMS).find((i: any) => i.id === p.item_id);
+          return { ...item, proposal_id: p.id, request_id: p.request_id, item_id: p.item_id, status: p.status, expires_at: p.expires_at };
+        });
+      setProposals(userProposals);
 
-      const topRes = await fetch('/api/stats/top-searches');
-      const topData = await topRes.json();
-      setTopSearches(topData);
+      // Top Searches
+      const allRequests: Request[] = getLocalData(STORAGE_KEYS.REQUESTS);
+      const searchCounts: Record<string, number> = {};
+      allRequests.forEach(r => {
+        const q = r.query.toLowerCase().trim();
+        if (q) searchCounts[q] = (searchCounts[q] || 0) + 1;
+      });
+      const top = Object.entries(searchCounts)
+        .map(([query, count]) => ({ query, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 20);
+      setTopSearches(top);
 
-      const favRes = await fetch(`/api/favorites/${USER_ID}`);
-      const favData = await favRes.json();
-      setFavorites(favData);
+      // Favorites
+      const allFavs: any[] = getLocalData(STORAGE_KEYS.FAVORITES);
+      const userFavIds = allFavs.filter(f => f.userId === USER_ID).map(f => f.itemId);
+      const userFavs = getLocalData(STORAGE_KEYS.ITEMS).filter((i: any) => userFavIds.includes(i.id));
+      setFavorites(userFavs);
 
-      const reqRes = await fetch(`/api/requests/${USER_ID}`);
-      const reqData = await reqRes.json();
-      setUserRequests(reqData);
+      // User Requests
+      const userReqs = allRequests.filter(r => r.buyer_id === USER_ID);
+      setUserRequests(userReqs);
+
     } catch (err) {
       console.error("Fetch error:", err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const runMatching = () => {
+    const requests = getLocalData(STORAGE_KEYS.REQUESTS);
+    const items = getLocalData(STORAGE_KEYS.ITEMS);
+    const proposals = getLocalData(STORAGE_KEYS.PROPOSALS);
+    let matchesCreated = 0;
+
+    requests.forEach((req: any) => {
+      if (req.status !== 'active') return;
+      items.forEach((item: any) => {
+        if (item.status !== 'available') return;
+        
+        const query = req.query.toLowerCase();
+        const title = item.title.toLowerCase();
+        const desc = item.description.toLowerCase();
+
+        if (title.includes(query) || desc.includes(query)) {
+          if ((req.min_price === 0 || item.price >= req.min_price) &&
+              (req.max_price === 0 || item.price <= req.max_price)) {
+            
+            const exists = proposals.find((p: any) => p.request_id === req.id && p.item_id === item.id);
+            if (!exists) {
+              const expiresAt = new Date();
+              expiresAt.setHours(expiresAt.getHours() + 24);
+              proposals.push({
+                id: Date.now() + Math.random(),
+                request_id: req.id,
+                item_id: item.id,
+                status: 'pending',
+                expires_at: expiresAt.toISOString()
+              });
+              matchesCreated++;
+            }
+          }
+        }
+      });
+    });
+
+    if (matchesCreated > 0) {
+      setLocalData(STORAGE_KEYS.PROPOSALS, proposals);
+    }
+    return matchesCreated;
   };
 
   const handleSell = async (e: React.FormEvent) => {
@@ -163,19 +262,19 @@ export default function App() {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newItem, seller_id: USER_ID, price: parseFloat(newItem.price) })
-      });
+      const items = getLocalData(STORAGE_KEYS.ITEMS);
+      const item = {
+        ...newItem,
+        id: Date.now(),
+        seller_id: USER_ID,
+        price: parseFloat(newItem.price),
+        status: 'available' as const,
+        created_at: new Date().toISOString()
+      };
+      items.push(item);
+      setLocalData(STORAGE_KEYS.ITEMS, items);
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Errore durante il salvataggio dell'annuncio");
-      }
-
-      // Trigger matching for demo
-      await fetch('/api/match', { method: 'POST' });
+      runMatching();
       
       alert("Annuncio pubblicato con successo!");
       setView('dashboard');
@@ -194,20 +293,23 @@ export default function App() {
     e.preventDefault();
     setLoading(true);
     try {
-      await fetch('/api/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          ...newRequest, 
-          buyer_id: USER_ID, 
-          min_price: parseFloat(newRequest.min_price), 
-          max_price: parseFloat(newRequest.max_price) 
-        })
-      });
-      // Trigger matching for demo
-      await fetch('/api/match', { method: 'POST' });
+      const requests = getLocalData(STORAGE_KEYS.REQUESTS);
+      const request = {
+        ...newRequest,
+        id: Date.now(),
+        buyer_id: USER_ID,
+        min_price: parseFloat(newRequest.min_price) || 0,
+        max_price: parseFloat(newRequest.max_price) || 0,
+        status: 'active' as const,
+        created_at: new Date().toISOString()
+      };
+      requests.push(request);
+      setLocalData(STORAGE_KEYS.REQUESTS, requests);
+      
+      runMatching();
       setView('dashboard');
       setNewRequest({ query: '', min_price: '', max_price: '', location: '' });
+      fetchData();
     } catch (err) {
       console.error(err);
     } finally {
@@ -217,29 +319,28 @@ export default function App() {
 
   const respondToProposal = async (id: number, status: 'accepted' | 'rejected') => {
     try {
-      await fetch(`/api/proposals/${id}/respond`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      });
-      fetchData();
+      const proposals = getLocalData(STORAGE_KEYS.PROPOSALS);
+      const pIndex = proposals.findIndex((p: any) => p.id === id);
+      if (pIndex !== -1) {
+        proposals[pIndex].status = status;
+        setLocalData(STORAGE_KEYS.PROPOSALS, proposals);
+        fetchData();
+      }
     } catch (err) {
       console.error(err);
     }
   };
 
   const toggleFavorite = async (itemId: number) => {
-    const isFav = favorites.some(f => f.id === itemId);
     try {
-      if (isFav) {
-        await fetch(`/api/favorites/${USER_ID}/${itemId}`, { method: 'DELETE' });
+      const favs = getLocalData(STORAGE_KEYS.FAVORITES);
+      const fIndex = favs.findIndex((f: any) => f.userId === USER_ID && f.itemId === itemId);
+      if (fIndex !== -1) {
+        favs.splice(fIndex, 1);
       } else {
-        await fetch('/api/favorites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: USER_ID, itemId })
-        });
+        favs.push({ userId: USER_ID, itemId });
       }
+      setLocalData(STORAGE_KEYS.FAVORITES, favs);
       fetchData();
     } catch (err) {
       console.error(err);
@@ -248,8 +349,13 @@ export default function App() {
 
   const deleteRequest = async (id: number) => {
     try {
-      await fetch(`/api/requests/${id}`, { method: 'DELETE' });
-      fetchData();
+      const requests = getLocalData(STORAGE_KEYS.REQUESTS);
+      const rIndex = requests.findIndex((r: any) => r.id === id);
+      if (rIndex !== -1) {
+        requests.splice(rIndex, 1);
+        setLocalData(STORAGE_KEYS.REQUESTS, requests);
+        fetchData();
+      }
     } catch (err) {
       console.error(err);
     }
@@ -259,18 +365,19 @@ export default function App() {
     if (!searchQuery) return;
     setLoading(true);
     try {
-      await fetch('/api/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          buyer_id: USER_ID, 
-          query: searchQuery, 
-          min_price: 0, 
-          max_price: 0, 
-          location: 'Ovunque' 
-        })
+      const requests = getLocalData(STORAGE_KEYS.REQUESTS);
+      requests.push({
+        id: Date.now(),
+        buyer_id: USER_ID,
+        query: searchQuery,
+        min_price: 0,
+        max_price: 0,
+        location: 'Ovunque',
+        status: 'active',
+        created_at: new Date().toISOString()
       });
-      await fetch('/api/match', { method: 'POST' });
+      setLocalData(STORAGE_KEYS.REQUESTS, requests);
+      runMatching();
       alert("Ricerca salvata! Ti avviseremo quando troveremo un match.");
       fetchData();
     } catch (err) {
@@ -540,16 +647,7 @@ export default function App() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     // Simple mock message for demo
-                                    fetch('/api/messages', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        sender_id: USER_ID,
-                                        receiver_id: item.seller_id,
-                                        item_id: item.id,
-                                        content: `Ciao! Sono interessato a "${item.title}". È ancora disponibile?`
-                                      })
-                                    }).then(() => alert("Messaggio inviato!"));
+                                    alert(`Messaggio inviato a ${item.seller_id} per "${item.title}"!`);
                                   }}
                                   className="p-2 bg-ios-secondary rounded-full text-ios-gray hover:text-ios-blue transition-colors"
                                   title="Contatta Venditore"
