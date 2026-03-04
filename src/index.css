@@ -12,7 +12,7 @@
   --color-ios-label: #1C1C1E;
   --color-ios-secondary: #F2F2F7;
   
-  --color-brand-start: #FF6B00;
+  --color-brand-start: #FFD600;
   --color-brand-end: #FF9500;
   
   --shadow-ios: 0 2px 8px rgba(0,0,0,0.04);
@@ -58,11 +58,15 @@
   }
 
   .nav-item-active {
-    @apply bg-ios-blue text-white shadow-lg shadow-ios-blue/20;
+    @apply bg-brand-end text-white shadow-lg shadow-brand-end/20;
   }
 
   .badge {
     @apply px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider;
+  }
+
+  .nav-gradient {
+    @apply bg-linear-to-r from-ios-label to-[#2c2c2e] border-b border-white/5;
   }
 }
 

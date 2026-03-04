@@ -289,26 +289,26 @@ export default function App() {
             className="flex items-center gap-2 cursor-pointer" 
             onClick={() => setView('home')}
           >
-            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center text-white shadow-sm backdrop-blur-md">
+            <div className="w-8 h-8 bg-brand-start/20 rounded-lg flex items-center justify-center text-brand-start shadow-sm backdrop-blur-md">
               <Package size={18} strokeWidth={2.5} />
             </div>
             <span className="text-xl font-extrabold tracking-tight text-transparent bg-clip-text bg-linear-to-r from-brand-start to-brand-end">ReMatch</span>
           </div>
           
           <div className="hidden md:flex items-center gap-8">
-            <button onClick={() => setView('home')} className={`px-3 py-1 text-sm font-semibold transition-all duration-200 hover:bg-white/10 rounded-lg active:scale-95 ${view === 'home' ? 'text-white bg-white/10' : 'text-white/70 hover:text-white'}`}>Marketplace</button>
-            <button onClick={() => setView('dashboard')} className={`px-3 py-1 text-sm font-semibold transition-all duration-200 hover:bg-white/10 rounded-lg active:scale-95 ${view === 'dashboard' ? 'text-white bg-white/10' : 'text-white/70 hover:text-white'}`}>Dashboard</button>
+            <button onClick={() => setView('home')} className={`px-3 py-1 text-sm font-semibold transition-all duration-200 hover:bg-white/10 rounded-lg active:scale-95 ${view === 'home' ? 'text-brand-end bg-brand-end/20' : 'text-white/70 hover:text-white'}`}>Marketplace</button>
+            <button onClick={() => setView('dashboard')} className={`px-3 py-1 text-sm font-semibold transition-all duration-200 hover:bg-white/10 rounded-lg active:scale-95 ${view === 'dashboard' ? 'text-brand-end bg-brand-end/20' : 'text-white/70 hover:text-white'}`}>Dashboard</button>
           </div>
 
           <div className="flex items-center gap-4">
-            <button className="relative p-2 text-white/70 hover:text-white transition-all">
+            <button className="relative p-2 text-brand-start hover:text-brand-end transition-all">
               <Bell size={20} />
               {proposals.length > 0 && (
-                <span className="absolute top-2 right-2 w-2 h-2 bg-white rounded-full border-2 border-brand-start"></span>
+                <span className="absolute top-2 right-2 w-2 h-2 bg-brand-end rounded-full border-2 border-brand-start"></span>
               )}
             </button>
-            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border border-white/10 overflow-hidden cursor-pointer backdrop-blur-md">
-              <User size={16} className="text-white" />
+            <div className="w-8 h-8 rounded-full bg-brand-start/20 flex items-center justify-center border border-brand-start/20 overflow-hidden cursor-pointer backdrop-blur-md">
+              <User size={16} className="text-brand-start" />
             </div>
           </div>
         </div>
@@ -1077,7 +1077,7 @@ export default function App() {
               </p>
               <div className="flex gap-4">
                 {['Twitter', 'Instagram', 'LinkedIn'].map(social => (
-                  <a key={social} href="#" className="w-10 h-10 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray hover:text-ios-blue hover:scale-110 hover:shadow-md transition-all border border-black/[0.05]">
+                  <a key={social} href="#" className="w-10 h-10 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray hover:text-brand-end hover:scale-110 hover:shadow-md transition-all border border-black/[0.05]">
                     <span className="sr-only">{social}</span>
                     <div className="w-4 h-4 bg-current opacity-20 rounded-full"></div>
                   </a>
@@ -1088,20 +1088,20 @@ export default function App() {
             <div className="space-y-6">
               <h4 className="text-sm font-bold text-ios-label">Piattaforma</h4>
               <ul className="space-y-3">
-                <li><button onClick={() => setView('home')} className="text-ios-gray hover:text-ios-blue transition-colors text-sm font-medium">Marketplace</button></li>
-                <li><button onClick={() => setView('sell')} className="text-ios-gray hover:text-ios-blue transition-colors text-sm font-medium">Vendi Oggetto</button></li>
-                <li><button onClick={() => setView('buy')} className="text-ios-gray hover:text-ios-blue transition-colors text-sm font-medium">Cerca Oggetto</button></li>
-                <li><button onClick={() => setView('dashboard')} className="text-ios-gray hover:text-ios-blue transition-colors text-sm font-medium">Dashboard</button></li>
+                <li><button onClick={() => setView('home')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Marketplace</button></li>
+                <li><button onClick={() => setView('sell')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Vendi Oggetto</button></li>
+                <li><button onClick={() => setView('buy')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Cerca Oggetto</button></li>
+                <li><button onClick={() => setView('dashboard')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Dashboard</button></li>
               </ul>
             </div>
 
             <div className="space-y-6">
               <h4 className="text-sm font-bold text-ios-label">Supporto</h4>
               <ul className="space-y-3">
-                <li><a href="#" className="text-ios-gray hover:text-ios-blue transition-colors text-sm font-medium">Centro Aiuto</a></li>
-                <li><a href="#" className="text-ios-gray hover:text-ios-blue transition-colors text-sm font-medium">Sicurezza</a></li>
-                <li><a href="#" className="text-ios-gray hover:text-ios-blue transition-colors text-sm font-medium">Termini</a></li>
-                <li><a href="#" className="text-ios-gray hover:text-ios-blue transition-colors text-sm font-medium">Privacy</a></li>
+                <li><a href="#" className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Centro Aiuto</a></li>
+                <li><a href="#" className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Sicurezza</a></li>
+                <li><a href="#" className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Termini</a></li>
+                <li><a href="#" className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Privacy</a></li>
               </ul>
             </div>
           </div>
