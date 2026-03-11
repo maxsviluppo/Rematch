@@ -1,30 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
   
-  --color-ios-bg: #F2F2F7;
+  /* Light neutral palette */
+  --color-ios-bg: #F4F4F8;
   --color-ios-card: #FFFFFF;
   --color-ios-blue: #007AFF;
   --color-ios-gray: #8E8E93;
   --color-ios-label: #1C1C1E;
-  --color-ios-secondary: #F2F2F7;
+  --color-ios-secondary: #F0F0F5;
   
+  /* Brand gradient - warm amber/orange */
   --color-brand-start: #FFB800;
-  --color-brand-end: #FF9500;
+  --color-brand-end: #FF7A00;
   
-  --shadow-ios: 0 2px 8px rgba(0,0,0,0.04);
-  --shadow-ios-lg: 0 10px 30px rgba(0,0,0,0.08);
+  /* Shadows */
+  --shadow-ios: 0 1px 4px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.04);
+  --shadow-ios-lg: 0 4px 16px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04);
+  --shadow-brand: 0 4px 20px rgba(255,122,0,0.2);
 }
 
 @layer base {
+  /* Smooth scroll-to-top on page change */
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
-    @apply antialiased bg-[#F2F2F7] text-ios-label selection:bg-ios-blue/20 selection:text-ios-blue min-h-screen;
+    @apply antialiased bg-[#F4F4F8] text-ios-label selection:bg-brand-start/20 selection:text-brand-end min-h-screen;
     background-image: 
-      radial-gradient(at 0% 0%, rgba(0, 122, 255, 0.03) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(255, 107, 0, 0.03) 0px, transparent 50%);
+      radial-gradient(ellipse at 0% 0%, rgba(255, 184, 0, 0.05) 0px, transparent 60%),
+      radial-gradient(ellipse at 100% 0%, rgba(255, 122, 0, 0.04) 0px, transparent 60%);
   }
   
   h1, h2, h3 {
@@ -33,54 +42,114 @@
 }
 
 @layer components {
+  /* ─── Cards: subtle elevation, soft corners ─── */
   .ios-card {
-    @apply bg-ios-card rounded-[2.5rem] shadow-ios border border-black/[0.03] overflow-hidden transition-all duration-300;
+    @apply bg-ios-card rounded-2xl shadow-ios border border-black/[0.04] overflow-hidden transition-all duration-300;
   }
-  
   .ios-card-hover {
-    @apply hover:shadow-ios-lg hover:-translate-y-1;
+    @apply hover:shadow-ios-lg hover:-translate-y-0.5;
   }
 
+  /* ─── Buttons: animated gradient ─── */
   .ios-btn-primary {
-    @apply bg-linear-to-br from-brand-start to-brand-end text-white font-bold rounded-2xl px-6 py-3.5 sm:px-8 sm:py-4 hover:brightness-110 active:scale-95 transition-all duration-300 shadow-lg shadow-brand-start/20;
+    @apply relative font-bold rounded-xl px-6 py-3.5 sm:px-8 sm:py-4
+           text-white transition-all duration-300 active:scale-95 overflow-hidden
+           shadow-[0_4px_20px_rgba(255,122,0,0.25)];
+    background: linear-gradient(135deg, #FFB800 0%, #FF7A00 100%);
+    background-size: 200% 200%;
+  }
+  .ios-btn-primary:hover {
+    background-position: right center;
+    box-shadow: 0 6px 28px rgba(255, 122, 0, 0.35);
+    transform: translateY(-1px);
+  }
+  .ios-btn-primary:hover::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 100%);
   }
 
   .ios-btn-secondary {
-    @apply bg-white text-ios-label font-bold rounded-2xl px-6 py-3.5 sm:px-8 sm:py-4 hover:bg-ios-secondary active:scale-95 transition-all duration-300 border border-black/[0.05] shadow-sm;
+    @apply bg-white text-ios-label font-bold rounded-xl px-6 py-3.5 sm:px-8 sm:py-4
+           hover:bg-ios-secondary active:scale-95 transition-all duration-300
+           border border-black/[0.06] shadow-[0_1px_4px_rgba(0,0,0,0.06)];
   }
 
+  /* ─── Glass navbar ─── */
   .glass {
-    @apply bg-white/80 backdrop-blur-2xl border-b border-black/[0.05];
+    @apply bg-white/80 backdrop-blur-2xl border-b border-black/[0.06];
   }
-
   .glass-card {
-    @apply bg-white/60 backdrop-blur-xl border border-white/40 shadow-ios;
+    @apply bg-white/70 backdrop-blur-xl border border-white/50;
   }
 
-  .nav-item-active {
-    @apply bg-brand-end text-white shadow-lg shadow-brand-end/20;
-  }
-
-  .badge {
-    @apply px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider;
-  }
-
+  /* ─── Nav ─── */
   .nav-gradient {
-    @apply bg-linear-to-r from-ios-label to-[#2c2c2e] border-b border-white/5;
+    @apply bg-[#1c1c1e] border-b border-white/[0.06];
+  }
+  .nav-item-active {
+    background: linear-gradient(135deg, #FFB800 0%, #FF7A00 100%);
+    @apply text-white shadow-[0_4px_12px_rgba(255,122,0,0.3)] rounded-2xl;
+  }
+
+  /* ─── Inputs ─── */
+  .rm-input {
+    @apply w-full px-4 sm:px-6 py-3.5 sm:py-4 bg-ios-secondary rounded-xl
+           focus:outline-none focus:ring-2 focus:ring-brand-end/40 transition-all
+           text-base font-semibold placeholder:text-ios-gray/60
+           border border-transparent focus:border-brand-end/30;
+  }
+  .rm-input-lg {
+    @apply w-full px-5 sm:px-8 py-4 sm:py-5 bg-ios-secondary rounded-2xl
+           focus:outline-none focus:ring-2 focus:ring-brand-end/40 transition-all
+           text-lg font-bold placeholder:text-ios-gray/40
+           border border-transparent focus:border-brand-end/30;
+  }
+  .rm-label {
+    @apply text-xs font-black text-ios-gray ml-1 uppercase tracking-widest;
+  }
+
+  /* ─── Section header ─── */
+  .rm-section-title {
+    @apply text-xl sm:text-2xl font-display font-black text-ios-label;
+  }
+
+  /* ─── Badge ─── */
+  .badge {
+    @apply px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider;
+  }
+
+  /* ─── Page wrapper for consistent spacing ─── */
+  .page-wrapper {
+    @apply max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-8 sm:space-y-12;
+  }
+
+  /* ─── Page hero ─── */
+  .page-hero {
+    @apply flex flex-col items-center text-center space-y-3 sm:space-y-4 pt-2 sm:pt-4;
+  }
+  .page-hero-icon {
+    @apply w-14 h-14 rounded-2xl flex items-center justify-center mb-1;
+    background: linear-gradient(135deg, rgba(255,184,0,0.15) 0%, rgba(255,122,0,0.15) 100%);
+    color: #FF7A00;
+  }
+  .page-hero h2 {
+    @apply text-2xl sm:text-4xl font-display font-black tracking-tight;
+  }
+  .page-hero p {
+    @apply text-ios-gray text-sm sm:text-base font-medium max-w-sm mx-auto leading-relaxed;
+  }
+
+  /* ─── Stat card gradient ─── */
+  .stat-card-brand {
+    background: linear-gradient(135deg, #FFB800 0%, #FF7A00 100%);
+    @apply text-white rounded-2xl p-6 shadow-[0_4px_24px_rgba(255,122,0,0.25)];
   }
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.1);
-  border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0,0,0,0.2);
-}
+/* ─── Smooth scrollbar ─── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.16); }

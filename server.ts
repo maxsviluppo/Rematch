@@ -124,9 +124,10 @@ async function initDb() {
     `);
 
     client.release();
-    console.log("Connected to Supabase PostgreSQL and ensured schema exists");
-  } catch (err) {
-    console.error("Database connection error:", err);
+    console.log("SUCCESS: Connected to Supabase PostgreSQL and ensured schema exists");
+  } catch (err: any) {
+    console.error("DATABASE INITIALIZATION ERROR:", err.message || err);
+    console.error("Connection config host:", 'db.lydfzgzvxrayytzjgbmz.supabase.co');
   }
 }
 
@@ -473,7 +474,7 @@ async function startServer() {
         const queryLower = (request.query || "").toLowerCase().trim();
         if (!queryLower) continue;
 
-        const queryWords = queryLower.split(/\s+/).filter(w => w.length > 0);
+        const queryWords = queryLower.split(/\s+/).filter((w: string) => w.length > 0);
         console.log(`Checking request: "${queryLower}" (ID: ${request.id})`);
         
         for (const item of availableItems) {
@@ -513,7 +514,7 @@ async function startServer() {
           const fullQueryPresent = titleLower.includes(queryLower) || descLower.includes(queryLower);
           
           // Check if ANY query word is present (extremely lenient)
-          const matchedWords = queryWords.filter(word => titleLower.includes(word) || descLower.includes(word));
+          const matchedWords = queryWords.filter((word: string) => titleLower.includes(word) || descLower.includes(word));
           const anyWordMatch = matchedWords.length > 0;
 
           isMatch = fullQueryPresent || anyWordMatch;
