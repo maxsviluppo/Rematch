@@ -42,20 +42,21 @@ const USER_ID = "user_123"; // Mock user ID for demo
 const CATEGORIES = ['Tutte', 'Elettronica', 'Abbigliamento', 'Casa', 'Sport', 'Libri', 'Altro'];
 
 export default function App() {
-  const [view, setView] = useState<'home' | 'sell' | 'buy' | 'dashboard' | 'checkout'>('home');
+  const [view, setView] = useState<'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina'>('home');
   const [items, setItems] = useState<Item[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [favorites, setFavorites] = useState<Item[]>([]);
   const [userRequests, setUserRequests] = useState<Request[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [topSearches, setTopSearches] = useState<{query: string, count: number}[]>([]);
+  const [showAllTopSearches, setShowAllTopSearches] = useState(false);
   const [activeProposal, setActiveProposal] = useState<Proposal | null>(null);
   const [loading, setLoading] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   
   // Search states
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Tutte');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(['Tutte']);
 
   // Form states
   const [newItem, setNewItem] = useState({
@@ -87,7 +88,7 @@ export default function App() {
     return () => {
       notificationService.disconnect();
     };
-  }, [view, searchQuery, selectedCategory]);
+  }, [view, searchQuery, selectedCategories]);
 
   const handleEnableNotifications = async () => {
     const granted = await notificationService.requestPermission();
@@ -140,12 +141,16 @@ export default function App() {
       if (itemsError) throw itemsError;
 
       let filteredItems = allItems || [];
-      if (searchQuery || selectedCategory !== 'Tutte') {
+      if (searchQuery || (!selectedCategories.includes('Tutte') && selectedCategories.length > 0)) {
         filteredItems = filteredItems.filter(item => {
           const matchesSearch = !searchQuery || 
             item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
             item.description.toLowerCase().includes(searchQuery.toLowerCase());
-          const matchesCategory = selectedCategory === 'Tutte' || item.category === selectedCategory;
+          
+          const matchesCategory = selectedCategories.includes('Tutte') || 
+                                 selectedCategories.length === 0 || 
+                                 selectedCategories.includes(item.category);
+                                 
           return matchesSearch && matchesCategory;
         });
       }
@@ -192,7 +197,7 @@ export default function App() {
       const top = Object.entries(searchCounts)
         .map(([query, count]) => ({ query, count }))
         .sort((a, b) => b.count - a.count)
-        .slice(0, 20);
+        .slice(0, 100);
       setTopSearches(top);
 
       // 4. Favorites (Restored)
@@ -205,7 +210,7 @@ export default function App() {
       setFavorites((favs || []).map(f => f.items));
 
       // 5. Fetch Transactions (from Express API)
-      const resTrans = await fetch(`http://localhost:3000/api/transactions/${USER_ID}`);
+      const resTrans = await fetch(`/api/transactions/${USER_ID}`);
       const trans = await resTrans.json();
       setTransactions(trans || []);
 
@@ -292,7 +297,11 @@ export default function App() {
       await fetchData();
     } catch (err: any) {
       console.error(err);
-      alert("Errore: " + err.message);
+      if (err.code === 'PGRST205') {
+        alert("Errore: Tabella 'items' non trovata nel database. Assicurati che il server sia avviato o crea la tabella su Supabase.");
+      } else {
+        alert("Errore durante la pubblicazione: " + (err.message || "Errore sconosciuto"));
+      }
     } finally {
       setLoading(false);
     }
@@ -373,7 +382,7 @@ export default function App() {
     if (!activeProposal) return;
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:3000/api/transactions', {
+      const response = await fetch('/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -402,7 +411,7 @@ export default function App() {
 
   const handleShip = async (transactionId: number, trackingInfo: { tracking_id: string, courier: string, seller_iban: string }) => {
     try {
-      const response = await fetch(`http://localhost:3000/api/transactions/${transactionId}/ship`, {
+      const response = await fetch(`/api/transactions/${transactionId}/ship`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(trackingInfo)
@@ -418,7 +427,7 @@ export default function App() {
 
   const handleConfirmArrival = async (transactionId: number) => {
     try {
-      const response = await fetch(`http://localhost:3000/api/transactions/${transactionId}/confirm-arrival`, {
+      const response = await fetch(`/api/transactions/${transactionId}/confirm-arrival`, {
         method: 'POST'
       });
       if (response.ok) {
@@ -469,19 +478,20 @@ export default function App() {
           </div>
           
           <div className="hidden md:flex items-center gap-8">
-            <button onClick={() => setView('home')} className={`px-3 py-1 text-sm font-semibold transition-all duration-200 hover:bg-white/10 rounded-lg active:scale-95 ${view === 'home' ? 'text-brand-end bg-brand-end/20' : 'text-white/70 hover:text-white'}`}>Marketplace</button>
+            <button onClick={() => setView('home')} className={`px-3 py-1 text-sm font-semibold transition-all duration-200 hover:bg-white/10 rounded-lg active:scale-95 ${view === 'home' ? 'text-brand-end bg-brand-end/20' : 'text-white/70 hover:text-white'}`}>Home</button>
             <button onClick={() => setView('dashboard')} className={`px-3 py-1 text-sm font-semibold transition-all duration-200 hover:bg-white/10 rounded-lg active:scale-95 ${view === 'dashboard' ? 'text-brand-end bg-brand-end/20' : 'text-white/70 hover:text-white'}`}>Dashboard</button>
+            <button onClick={() => setView('vetrina')} className={`px-3 py-1 text-sm font-semibold transition-all duration-200 hover:bg-white/10 rounded-lg active:scale-95 ${view === 'vetrina' ? 'text-brand-end bg-brand-end/20' : 'text-white/70 hover:text-white'}`}>Vetrina</button>
           </div>
 
           <div className="flex items-center gap-4">
-            <button className="relative p-2 text-brand-start hover:text-brand-end transition-all">
+            <button className="relative p-2 text-brand-end hover:text-white transition-all">
               <Bell size={20} />
               {proposals.length > 0 && (
-                <span className="absolute top-2 right-2 w-2 h-2 bg-brand-end rounded-full border-2 border-brand-start"></span>
+                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-[#1c1c1e]"></span>
               )}
             </button>
-            <div className="w-8 h-8 rounded-full bg-brand-start/20 flex items-center justify-center border border-brand-start/20 overflow-hidden cursor-pointer backdrop-blur-md">
-              <User size={16} className="text-brand-start" />
+            <div className="w-8 h-8 rounded-full bg-brand-end/20 flex items-center justify-center border border-brand-end/20 overflow-hidden cursor-pointer backdrop-blur-md">
+              <User size={16} className="text-brand-end" />
             </div>
           </div>
         </div>
@@ -522,6 +532,13 @@ export default function App() {
               )}
             </div>
             <span className="text-[10px] font-bold mt-1">Dashboard</span>
+          </button>
+          <button 
+            onClick={() => setView('vetrina')}
+            className={`flex-1 flex flex-col items-center py-3 rounded-[1.8rem] transition-all duration-500 ${view === 'vetrina' ? 'nav-item-active' : 'text-ios-gray hover:bg-black/5'}`}
+          >
+            <ShoppingBag size={22} className={view === 'vetrina' ? 'scale-110' : ''} />
+            <span className="text-[10px] font-bold mt-1">Vetrina</span>
           </button>
         </div>
       </nav>
@@ -575,61 +592,119 @@ export default function App() {
                   </div>
                 </div>
               </section>
+
+              {/* Top 10 Searches Ranking - Move before Search Box */}
+              <section className="ios-card p-8 sm:p-12 glass-card !rounded-[2.5rem] sm:!rounded-[3.5rem] shadow-2xl space-y-8">
+                <div className="flex items-center justify-between border-b border-black/[0.05] pb-6">
+                  <div className="space-y-1">
+                    <h3 className="text-2xl sm:text-3xl font-black">Top 10 Ricercati</h3>
+                    <p className="text-ios-gray text-sm">Le tendenze più calde della community.</p>
+                  </div>
+                  <TrendingUp size={28} className="text-brand-end" />
+                </div>
                 
-              {/* Search & Categories */}
-              <div className="ios-card p-4 sm:p-8 glass-card !rounded-[2rem] sm:!rounded-[3rem] shadow-2xl">
-                <div className="flex flex-col md:flex-row gap-4 sm:gap-5">
+                <div className="flex flex-wrap gap-3 sm:gap-4 overflow-hidden">
+                  {topSearches.length === 0 ? (
+                    <p className="text-ios-gray text-sm italic">Nessun dato disponibile ancora.</p>
+                  ) : (
+                    <>
+                      {/* Always show the first 10 */}
+                      {topSearches.slice(0, 10).map((search, index) => (
+                        <motion.div 
+                          layout
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          key={`top-${index}`} 
+                          className="flex items-center gap-3 px-6 py-3 bg-ios-secondary/50 rounded-2xl border border-black/[0.03] group hover:bg-ios-label hover:text-white transition-all duration-300 cursor-default"
+                        >
+                          <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black ${index < 3 ? 'bg-brand-end text-white' : 'bg-ios-label/10 text-ios-label group-hover:bg-white/20 group-hover:text-white'}`}>
+                            {index + 1}
+                          </span>
+                          <span className="text-sm font-bold capitalize">{search.query}</span>
+                          <span className="px-2 py-0.5 bg-black/5 rounded-md text-[9px] font-black group-hover:bg-white/10">{search.count}</span>
+                        </motion.div>
+                      ))}
+
+                      {/* Animated expansion for the rest */}
+                      <AnimatePresence>
+                        {showAllTopSearches && topSearches.slice(10, 100).map((search, index) => (
+                          <motion.div 
+                            layout
+                            initial={{ opacity: 0, height: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                            exit={{ opacity: 0, height: 0, scale: 0.9 }}
+                            key={`extra-${index}`} 
+                            className="flex items-center gap-3 px-6 py-3 bg-ios-secondary/50 rounded-2xl border border-black/[0.03] group hover:bg-ios-label hover:text-white transition-all duration-300 cursor-default"
+                          >
+                            <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black bg-ios-label/10 text-ios-label group-hover:bg-white/20 group-hover:text-white">
+                              {index + 11}
+                            </span>
+                            <span className="text-sm font-bold capitalize">{search.query}</span>
+                            <span className="px-2 py-0.5 bg-black/5 rounded-md text-[9px] font-black group-hover:bg-white/10">{search.count}</span>
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+                    </>
+                  )}
+                </div>
+                {topSearches.length > 10 && (
+                  <div className="pt-8 text-center">
+                    <button 
+                      onClick={() => setShowAllTopSearches(!showAllTopSearches)}
+                      className="inline-flex items-center gap-3 px-8 py-3 bg-white border border-black/[0.05] rounded-full text-ios-blue font-black text-sm hover:shadow-lg active:scale-95 transition-all group"
+                    >
+                      {showAllTopSearches ? 'Chiudi classifica' : 'Mostra classifica completa (100)'}
+                      <ChevronRight 
+                        size={18} 
+                        className={`transition-transform duration-500 ${showAllTopSearches ? '-rotate-90' : 'rotate-90'}`} 
+                      />
+                    </button>
+                  </div>
+                )}
+              </section>
+                
+              {/* Search Section */}
+              <div className="ios-card p-6 sm:p-10 glass-card !rounded-[2.5rem] sm:!rounded-[3.5rem] shadow-2xl">
+                <div className="flex flex-col md:flex-row gap-5">
                   <div className="flex-1 relative group">
-                    <Search className="absolute left-5 sm:left-7 top-1/2 -translate-y-1/2 text-ios-gray group-focus-within:text-ios-blue transition-colors duration-300" size={20} />
+                    <Search className="absolute left-6 sm:left-8 top-1/2 -translate-y-1/2 text-ios-gray group-focus-within:text-brand-end transition-colors duration-300" size={24} />
                     <input 
                       type="text" 
                       placeholder="Cosa stai cercando oggi?"
-                      className="w-full pl-12 sm:pl-16 pr-6 sm:pr-8 py-4 sm:py-5 bg-ios-secondary/50 rounded-2xl sm:rounded-3xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all text-base sm:text-xl font-bold placeholder:text-ios-gray/40"
+                      className="w-full pl-14 sm:pl-20 pr-8 py-5 sm:py-7 bg-ios-secondary/50 rounded-2xl sm:rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-brand-end/10 transition-all text-lg sm:text-2xl font-bold placeholder:text-ios-gray/40 shadow-inner"
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
                     />
                   </div>
-                  <div className="flex gap-2 sm:gap-3">
-                    <button 
-                      onClick={() => fetchData()}
-                      className="ios-btn-primary flex-1 md:flex-none !px-8 sm:!px-12 !rounded-2xl sm:!rounded-3xl shadow-2xl"
-                    >
-                      Cerca
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => fetchData()}
+                    className="ios-btn-primary !px-10 sm:!px-16 !py-5 sm:!py-7 !text-xl !rounded-2xl sm:!rounded-[2rem] shadow-2xl shadow-brand-end/20 active:scale-95 transition-all"
+                  >
+                    Trova Match
+                  </button>
                 </div>
-                
-                <div className="flex gap-2 sm:gap-3 overflow-x-auto py-4 sm:py-6 no-scrollbar">
-                  {CATEGORIES.map(cat => (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`px-6 sm:px-8 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-black whitespace-nowrap transition-all duration-500 ${
-                        selectedCategory === cat 
-                          ? 'bg-ios-label text-white shadow-2xl scale-105' 
-                          : 'bg-ios-secondary text-ios-gray hover:bg-ios-gray/10 hover:scale-105'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
+                <p className="mt-4 text-center text-ios-gray text-xs font-medium italic">
+                  La nostra AI cercherà match in tutte le categorie basandosi sulle tue parole chiave.
+                </p>
               </div>
 
-              {/* Live Marketplace */}
-              <section className="space-y-6">
+              {/* Live Marketplace - Shown at the bottom */}
+              <section className="space-y-8">
                 <div className="flex justify-between items-end">
                   <div className="space-y-1">
-                    <h2 className="text-2xl font-black">Marketplace Live</h2>
-                    <p className="text-ios-gray text-sm">Scopri gli ultimi scambi in tempo reale.</p>
+                    <h2 className="text-3xl font-black tracking-tight">Vetrina Anteprima</h2>
+                    <p className="text-ios-gray text-sm">Gli ultimi 20 oggetti caricati nella community.</p>
                   </div>
-                  <button className="text-ios-blue text-sm font-semibold flex items-center gap-1 hover:translate-x-1 transition-transform duration-200">
+                  <button 
+                    onClick={() => setView('vetrina')}
+                    className="text-ios-blue text-sm font-bold flex items-center gap-1 hover:translate-x-1 transition-transform"
+                  >
                     Vedi tutto <ChevronRight size={16} />
                   </button>
                 </div>
                 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                  {items.map((item) => {
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-8">
+                  {items.slice(0, 10).map((item) => {
                     const isFav = favorites.some(f => f.id === item.id);
                     return (
                       <motion.div 
@@ -1353,31 +1428,93 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Top Searches Ranking */}
-                  <div className="ios-card p-8 space-y-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xl">Top 20 Ricercati</h3>
-                      <TrendingUp size={20} className="text-ios-blue" />
-                    </div>
-                    <div className="space-y-4">
-                      {topSearches.length === 0 ? (
-                        <p className="text-ios-gray text-xs">Nessun dato disponibile ancora.</p>
-                      ) : (
-                        topSearches.map((search, index) => (
-                          <div key={index} className="flex items-center justify-between group">
-                            <div className="flex items-center gap-3">
-                              <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black ${index < 3 ? 'bg-ios-blue text-white' : 'bg-ios-secondary text-ios-gray'}`}>
-                                {index + 1}
-                              </span>
-                              <span className="text-sm font-bold capitalize group-hover:text-ios-blue transition-colors">{search.query}</span>
-                            </div>
-                            <span className="text-[10px] font-black text-ios-gray/40 uppercase tracking-widest">{search.count} {search.count === 1 ? 'Ricerca' : 'Ricerche'}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                  {/* Removed duplicate Top Searches */}
                 </div>
+              </div>
+            </motion.div>
+          )}
+
+          {view === 'vetrina' && (
+            <motion.div 
+              key="vetrina"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
+            >
+              <div className="sticky top-20 z-40 bg-white/80 backdrop-blur-xl -mx-6 px-6 py-4 flex flex-col gap-4 border-b border-black/[0.03]">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <h2 className="text-3xl font-black">Vetrina Annunci</h2>
+                    <p className="text-ios-gray text-xs">Esplora tutti gli oggetti disponibili nella community.</p>
+                  </div>
+                  <button onClick={() => setView('home')} className="p-2 hover:bg-black/5 rounded-full transition-colors">
+                    <X size={28} />
+                  </button>
+                </div>
+                
+                <div className="flex gap-2 overflow-x-auto no-scrollbar py-2">
+                  {CATEGORIES.map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => {
+                        if (cat === 'Tutte') {
+                          setSelectedCategories(['Tutte']);
+                        } else {
+                          const newCats = selectedCategories.includes(cat)
+                            ? selectedCategories.filter(c => c !== cat)
+                            : [...selectedCategories.filter(c => c !== 'Tutte'), cat];
+                          setSelectedCategories(newCats.length === 0 ? ['Tutte'] : newCats);
+                        }
+                      }}
+                      className={`px-6 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all duration-300 border-2 ${
+                        selectedCategories.includes(cat) 
+                          ? 'bg-brand-end border-brand-end text-white shadow-lg' 
+                          : 'bg-white border-black/[0.05] text-ios-gray hover:border-brand-end/30'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                {items.length === 0 ? (
+                  <div className="col-span-full py-20 text-center space-y-4">
+                    <ShoppingBag size={48} className="mx-auto text-ios-gray/20" />
+                    <p className="text-ios-gray font-bold">Nessun oggetto trovato per questa selezione.</p>
+                  </div>
+                ) : (
+                  items.map((item) => {
+                    const isFav = favorites.some(f => f.id === item.id);
+                    return (
+                      <motion.div 
+                        layout
+                        whileHover={{ y: -8 }}
+                        key={item.id} 
+                        className="ios-card ios-card-hover group cursor-pointer"
+                      >
+                        <div className="aspect-square overflow-hidden relative">
+                          <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" referrerPolicy="no-referrer" />
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
+                            className={`absolute top-3 right-3 p-2 rounded-full backdrop-blur-md shadow-lg ${isFav ? 'bg-red-500 text-white' : 'bg-white/70 text-ios-gray'}`}
+                          >
+                            <Heart size={16} fill={isFav ? "currentColor" : "none"} />
+                          </button>
+                          <div className="absolute bottom-3 left-3 px-3 py-1 bg-brand-end text-white rounded-xl text-sm font-bold shadow-lg">
+                            €{item.price}
+                          </div>
+                        </div>
+                        <div className="p-4 space-y-2">
+                          <h4 className="font-bold text-sm truncate">{item.title}</h4>
+                          <span className="flex items-center gap-1 text-[10px] text-ios-gray"><MapPin size={10} />{item.location}</span>
+                        </div>
+                      </motion.div>
+                    );
+                  })
+                )}
               </div>
             </motion.div>
           )}
@@ -1389,11 +1526,11 @@ export default function App() {
         <div className="max-w-5xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
             <div className="col-span-2 space-y-6">
-              <div className="flex items-center h-16">
+              <div className="flex items-center h-24">
                 <img 
                   src="/logo.png" 
                   alt="ReMatch Logo" 
-                  className="h-6 w-auto object-contain" 
+                  className="h-14 w-auto object-contain" 
                 />
               </div>
               <p className="text-ios-gray text-lg max-w-sm leading-relaxed font-medium">
@@ -1412,10 +1549,11 @@ export default function App() {
             <div className="space-y-6">
               <h4 className="text-sm font-bold text-ios-label">Piattaforma</h4>
               <ul className="space-y-3">
-                <li><button onClick={() => setView('home')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Marketplace</button></li>
-                <li><button onClick={() => setView('sell')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Vendi Oggetto</button></li>
-                <li><button onClick={() => setView('buy')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Cerca Oggetto</button></li>
+                <li><button onClick={() => setView('home')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Home</button></li>
+                <li><button onClick={() => setView('sell')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Vendi</button></li>
+                <li><button onClick={() => setView('buy')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Compra</button></li>
                 <li><button onClick={() => setView('dashboard')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Dashboard</button></li>
+                <li><button onClick={() => setView('vetrina')} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-medium">Vetrina</button></li>
               </ul>
             </div>
 

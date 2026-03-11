@@ -22,7 +22,75 @@ async function initDb() {
   try {
     const client = await pool.connect();
     
-    // Create transactions table
+    // 1. Create items table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS items (
+        id SERIAL PRIMARY KEY,
+        seller_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        price DECIMAL(10,2) NOT NULL,
+        location TEXT,
+        category TEXT,
+        image_url TEXT,
+        status TEXT DEFAULT 'available', -- available, sold, archived
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // 2. Create requests table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS requests (
+        id SERIAL PRIMARY KEY,
+        buyer_id TEXT NOT NULL,
+        query TEXT NOT NULL,
+        min_price DECIMAL(10,2) DEFAULT 0,
+        max_price DECIMAL(10,2) DEFAULT 0,
+        location TEXT,
+        status TEXT DEFAULT 'active', -- active, completed, cancelled
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // 3. Create proposals table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS proposals (
+        id SERIAL PRIMARY KEY,
+        request_id INTEGER REFERENCES requests(id),
+        item_id INTEGER REFERENCES items(id),
+        status TEXT DEFAULT 'pending', -- pending, accepted, rejected, expired
+        expires_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // 4. Create favorites table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS favorites (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        item_id INTEGER REFERENCES items(id),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // 5. Create messages table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        sender_id TEXT NOT NULL,
+        receiver_id TEXT NOT NULL,
+        item_id INTEGER REFERENCES items(id),
+        content TEXT NOT NULL,
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // 6. Create transactions table
     await client.query(`
       CREATE TABLE IF NOT EXISTS transactions (
         id SERIAL PRIMARY KEY,
