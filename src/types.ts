@@ -29,3 +29,33 @@ export interface Proposal extends Omit<Item, 'status'> {
   status: 'pending' | 'accepted' | 'rejected' | 'expired';
   expires_at: string;
 }
+
+export interface Transaction {
+  id: number;
+  proposal_id: number;
+  buyer_id: string;
+  seller_id: string;
+  item_id: number;
+  status: 'checkout' | 'paid' | 'shipping' | 'shipped' | 'delivered' | 'completed' | 'cancelled';
+  
+  buyer_name: string;
+  buyer_surname: string;
+  buyer_email: string;
+  buyer_phone: string;
+  buyer_address: string;
+  buyer_city: string;
+  buyer_cap: string;
+  
+  tracking_id?: string;
+  courier?: string;
+  shipping_deadline: string;
+  shipped_at?: string;
+  
+  seller_iban?: string;
+  
+  title: string;
+  price: number;
+  image_url: string;
+  created_at: string;
+  updated_at: string;
+}

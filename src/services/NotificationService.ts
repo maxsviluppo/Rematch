@@ -41,7 +41,7 @@ class NotificationService {
     if (Notification.permission === "granted") {
       new Notification(title, {
         body,
-        icon: "/favicon.ico", // Fallback icon
+        icon: "/favicon.png",
       });
     }
   }

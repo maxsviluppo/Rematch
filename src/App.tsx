@@ -30,47 +30,26 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Item, Request, Proposal } from './types';
+import { Item, Request, Proposal, Transaction } from './types';
 import { notificationService } from './services/NotificationService';
+import { supabase } from './supabaseClient';
 
-// --- LOCAL STORAGE DATABASE SIMULATION ---
-const STORAGE_KEYS = {
-  ITEMS: 'rematch_items',
-  REQUESTS: 'rematch_requests',
-  PROPOSALS: 'rematch_proposals',
-  FAVORITES: 'rematch_favorites'
-};
-
-const getLocalData = (key: string) => {
-  const data = localStorage.getItem(key);
-  return data ? JSON.parse(data) : [];
-};
-
-const setLocalData = (key: string, data: any) => {
-  localStorage.setItem(key, JSON.stringify(data));
-};
-
-// Initial Seed Data if empty
-if (getLocalData(STORAGE_KEYS.ITEMS).length === 0) {
-  const initialItems = [
-    { id: 1, seller_id: 'other', title: 'iPhone 15 Pro', description: 'Come nuovo, 256GB', price: 950, location: 'Milano', category: 'Elettronica', status: 'available', image_url: 'https://picsum.photos/seed/iphone/400/300', created_at: new Date().toISOString() },
-    { id: 2, seller_id: 'other', title: 'MacBook Air M2', description: '8GB RAM, 256GB SSD', price: 1100, location: 'Roma', category: 'Elettronica', status: 'available', image_url: 'https://picsum.photos/seed/macbook/400/300', created_at: new Date().toISOString() },
-    { id: 3, seller_id: 'other', title: 'Tavolo in Legno', description: 'Tavolo da pranzo artigianale', price: 300, location: 'Torino', category: 'Casa', status: 'available', image_url: 'https://picsum.photos/seed/table/400/300', created_at: new Date().toISOString() }
-  ];
-  setLocalData(STORAGE_KEYS.ITEMS, initialItems);
-}
-
+// --- SUPABASE DATA FETCHING ---
 const USER_ID = "user_123"; // Mock user ID for demo
+
+
 
 const CATEGORIES = ['Tutte', 'Elettronica', 'Abbigliamento', 'Casa', 'Sport', 'Libri', 'Altro'];
 
 export default function App() {
-  const [view, setView] = useState<'home' | 'sell' | 'buy' | 'dashboard'>('home');
+  const [view, setView] = useState<'home' | 'sell' | 'buy' | 'dashboard' | 'checkout'>('home');
   const [items, setItems] = useState<Item[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [favorites, setFavorites] = useState<Item[]>([]);
   const [userRequests, setUserRequests] = useState<Request[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [topSearches, setTopSearches] = useState<{query: string, count: number}[]>([]);
+  const [activeProposal, setActiveProposal] = useState<Proposal | null>(null);
   const [loading, setLoading] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   
@@ -151,12 +130,18 @@ export default function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Local Storage Implementation
-      let allItems: Item[] = getLocalData(STORAGE_KEYS.ITEMS);
-      
-      // Filter items
+      // 1. Fetch Items
+      const { data: allItems, error: itemsError } = await supabase
+        .from('items')
+        .select('*')
+        .eq('status', 'available')
+        .order('created_at', { ascending: false });
+
+      if (itemsError) throw itemsError;
+
+      let filteredItems = allItems || [];
       if (searchQuery || selectedCategory !== 'Tutte') {
-        allItems = allItems.filter(item => {
+        filteredItems = filteredItems.filter(item => {
           const matchesSearch = !searchQuery || 
             item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
             item.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -164,27 +149,44 @@ export default function App() {
           return matchesSearch && matchesCategory;
         });
       }
-      setItems(allItems);
+      setItems(filteredItems);
 
-      // Proposals
-      const allProposals: any[] = getLocalData(STORAGE_KEYS.PROPOSALS);
-      const userProposals = allProposals
-        .filter(p => {
-          const reqs = getLocalData(STORAGE_KEYS.REQUESTS);
-          const r = reqs.find((req: any) => req.id === p.request_id);
-          return r && r.buyer_id === USER_ID && p.status === 'pending';
-        })
-        .map(p => {
-          const item = getLocalData(STORAGE_KEYS.ITEMS).find((i: any) => i.id === p.item_id);
-          return { ...item, proposal_id: p.id, request_id: p.request_id, item_id: p.item_id, status: p.status, expires_at: p.expires_at };
-        });
-      setProposals(userProposals);
+      // 2. Fetch User Requests & Proposals
+      const { data: userReqs, error: reqsError } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('buyer_id', USER_ID)
+        .eq('status', 'active');
+      
+      if (reqsError) throw reqsError;
+      setUserRequests(userReqs || []);
 
-      // Top Searches
-      const allRequests: Request[] = getLocalData(STORAGE_KEYS.REQUESTS);
+      const { data: userProposals, error: propError } = await supabase
+        .from('proposals')
+        .select('*, items(*)')
+        .eq('status', 'pending');
+
+      if (propError) throw propError;
+      
+      // Filter proposals where the request belongs to USER_ID
+      const filteredProposals = (userProposals || []).filter(p => {
+        const req = userReqs?.find(r => r.id === p.request_id);
+        return !!req;
+      }).map(p => ({
+        ...p.items,
+        proposal_id: p.id,
+        request_id: p.request_id,
+        item_id: p.item_id,
+        status: p.status,
+        expires_at: p.expires_at
+      }));
+      setProposals(filteredProposals);
+
+      // 3. Top Searches (This could be optimized with a view or separate state)
+      const { data: allReqs } = await supabase.from('requests').select('query, status').eq('status', 'active');
       const searchCounts: Record<string, number> = {};
-      allRequests.filter(r => r.status === 'active').forEach(r => {
-        const q = r.query.toLowerCase().trim();
+      (allReqs || []).forEach(r => {
+        const q = r.query?.toLowerCase().trim();
         if (q) searchCounts[q] = (searchCounts[q] || 0) + 1;
       });
       const top = Object.entries(searchCounts)
@@ -193,15 +195,19 @@ export default function App() {
         .slice(0, 20);
       setTopSearches(top);
 
-      // Favorites
-      const allFavs: any[] = getLocalData(STORAGE_KEYS.FAVORITES);
-      const userFavIds = allFavs.filter(f => f.userId === USER_ID).map(f => f.itemId);
-      const userFavs = getLocalData(STORAGE_KEYS.ITEMS).filter((i: any) => userFavIds.includes(i.id));
-      setFavorites(userFavs);
+      // 4. Favorites (Restored)
+      const { data: favs, error: favError } = await supabase
+        .from('favorites')
+        .select('item_id, items(*)')
+        .eq('user_id', USER_ID);
+      
+      if (favError) throw favError;
+      setFavorites((favs || []).map(f => f.items));
 
-      // User Requests
-      const userReqs = allRequests.filter(r => r.buyer_id === USER_ID && r.status === 'active');
-      setUserRequests(userReqs);
+      // 5. Fetch Transactions (from Express API)
+      const resTrans = await fetch(`http://localhost:3000/api/transactions/${USER_ID}`);
+      const trans = await resTrans.json();
+      setTransactions(trans || []);
 
     } catch (err) {
       console.error("Fetch error:", err);
@@ -210,47 +216,49 @@ export default function App() {
     }
   };
 
-  const runMatching = () => {
-    const requests = getLocalData(STORAGE_KEYS.REQUESTS);
-    const items = getLocalData(STORAGE_KEYS.ITEMS);
-    const proposals = getLocalData(STORAGE_KEYS.PROPOSALS);
-    let matchesCreated = 0;
+  const runMatching = async () => {
+    // This is a client-side implementation of matchmaking for demo
+    // In production, this should be a database function or recurring job
+    try {
+      const { data: requests } = await supabase.from('requests').select('*').eq('status', 'active');
+      const { data: items } = await supabase.from('items').select('*').eq('status', 'available');
+      const { data: existingProposals } = await supabase.from('proposals').select('*');
 
-    requests.forEach((req: any) => {
-      if (req.status !== 'active') return;
-      items.forEach((item: any) => {
-        if (item.status !== 'available') return;
-        
-        const query = req.query.toLowerCase();
-        const title = item.title.toLowerCase();
-        const desc = item.description.toLowerCase();
+      if (!requests || !items) return 0;
 
-        if (title.includes(query) || desc.includes(query)) {
-          if ((req.min_price === 0 || item.price >= req.min_price) &&
-              (req.max_price === 0 || item.price <= req.max_price)) {
-            
-            const exists = proposals.find((p: any) => p.request_id === req.id && p.item_id === item.id);
-            if (!exists) {
-              const expiresAt = new Date();
-              expiresAt.setHours(expiresAt.getHours() + 24);
-              proposals.push({
-                id: Date.now() + Math.random(),
-                request_id: req.id,
-                item_id: item.id,
-                status: 'pending',
-                expires_at: expiresAt.toISOString()
-              });
-              matchesCreated++;
+      let matchesCreated = 0;
+      for (const req of requests) {
+        for (const item of items) {
+          const query = req.query.toLowerCase();
+          const title = item.title.toLowerCase();
+          const desc = item.description.toLowerCase();
+
+          if (title.includes(query) || desc.includes(query)) {
+            if ((req.min_price === 0 || item.price >= req.min_price) &&
+                (req.max_price === 0 || item.price <= req.max_price)) {
+              
+              const exists = existingProposals?.find((p: any) => p.request_id === req.id && p.item_id === item.id);
+              if (!exists) {
+                const expiresAt = new Date();
+                expiresAt.setHours(expiresAt.getHours() + 24);
+                
+                await supabase.from('proposals').insert({
+                  request_id: req.id,
+                  item_id: item.id,
+                  status: 'pending',
+                  expires_at: expiresAt.toISOString()
+                });
+                matchesCreated++;
+              }
             }
           }
         }
-      });
-    });
-
-    if (matchesCreated > 0) {
-      setLocalData(STORAGE_KEYS.PROPOSALS, proposals);
+      }
+      return matchesCreated;
+    } catch (err) {
+      console.error("Match error:", err);
+      return 0;
     }
-    return matchesCreated;
   };
 
   const handleSell = async (e: React.FormEvent) => {
@@ -262,25 +270,26 @@ export default function App() {
 
     setLoading(true);
     try {
-      const items = getLocalData(STORAGE_KEYS.ITEMS);
-      const item = {
-        ...newItem,
-        id: Date.now(),
-        seller_id: USER_ID,
+      const { error } = await supabase.from('items').insert({
+        title: newItem.title,
+        description: newItem.description,
         price: parseFloat(newItem.price),
-        status: 'available' as const,
-        created_at: new Date().toISOString()
-      };
-      items.push(item);
-      setLocalData(STORAGE_KEYS.ITEMS, items);
+        location: newItem.location,
+        category: newItem.category,
+        image_url: newItem.image_url,
+        seller_id: USER_ID,
+        status: 'available'
+      });
+
+      if (error) throw error;
       
-      runMatching();
+      await runMatching();
       
       alert("Annuncio pubblicato con successo!");
       setView('dashboard');
       setNewItem({ title: '', description: '', price: '', location: '', category: 'Altro', image_url: 'https://picsum.photos/seed/item/400/300' });
       setImagePreview(null);
-      fetchData();
+      await fetchData();
     } catch (err: any) {
       console.error(err);
       alert("Errore: " + err.message);
@@ -293,23 +302,21 @@ export default function App() {
     e.preventDefault();
     setLoading(true);
     try {
-      const requests = getLocalData(STORAGE_KEYS.REQUESTS);
-      const request = {
-        ...newRequest,
-        id: Date.now(),
-        buyer_id: USER_ID,
+      const { error } = await supabase.from('requests').insert({
+        query: newRequest.query,
         min_price: parseFloat(newRequest.min_price) || 0,
         max_price: parseFloat(newRequest.max_price) || 0,
-        status: 'active' as const,
-        created_at: new Date().toISOString()
-      };
-      requests.push(request);
-      setLocalData(STORAGE_KEYS.REQUESTS, requests);
+        location: newRequest.location,
+        buyer_id: USER_ID,
+        status: 'active'
+      });
+
+      if (error) throw error;
       
-      runMatching();
+      await runMatching();
       setView('dashboard');
       setNewRequest({ query: '', min_price: '', max_price: '', location: '' });
-      fetchData();
+      await fetchData();
     } catch (err) {
       console.error(err);
     } finally {
@@ -317,43 +324,37 @@ export default function App() {
     }
   };
 
-  const respondToProposal = async (id: number, status: 'accepted' | 'rejected') => {
-    try {
-      const proposals = getLocalData(STORAGE_KEYS.PROPOSALS);
-      const pIndex = proposals.findIndex((p: any) => p.id === id);
-      if (pIndex !== -1) {
-        const proposal = proposals[pIndex];
-        proposals[pIndex].status = status;
-        setLocalData(STORAGE_KEYS.PROPOSALS, proposals);
-
-        // If accepted, mark the associated request as completed
-        if (status === 'accepted') {
-          const requests = getLocalData(STORAGE_KEYS.REQUESTS);
-          const rIndex = requests.findIndex((r: any) => r.id === proposal.request_id);
-          if (rIndex !== -1) {
-            requests[rIndex].status = 'completed';
-            setLocalData(STORAGE_KEYS.REQUESTS, requests);
-          }
-        }
-        
+  const respondToProposal = async (proposal: Proposal, status: 'accepted' | 'rejected') => {
+    if (status === 'rejected') {
+      try {
+        await supabase.from('proposals').update({ status: 'rejected' }).eq('id', proposal.proposal_id);
         fetchData();
+      } catch (err) {
+        console.error("Error rejecting proposal:", err);
       }
-    } catch (err) {
-      console.error(err);
+      return;
     }
+
+    // If accepted, move to checkout
+    setActiveProposal(proposal);
+    setView('checkout');
   };
 
   const toggleFavorite = async (itemId: number) => {
     try {
-      const favs = getLocalData(STORAGE_KEYS.FAVORITES);
-      const fIndex = favs.findIndex((f: any) => f.userId === USER_ID && f.itemId === itemId);
-      if (fIndex !== -1) {
-        favs.splice(fIndex, 1);
+      const { data: existing } = await supabase
+        .from('favorites')
+        .select('*')
+        .eq('user_id', USER_ID)
+        .eq('item_id', itemId)
+        .single();
+      
+      if (existing) {
+        await supabase.from('favorites').delete().eq('id', existing.id);
       } else {
-        favs.push({ userId: USER_ID, itemId });
+        await supabase.from('favorites').insert({ user_id: USER_ID, item_id: itemId });
       }
-      setLocalData(STORAGE_KEYS.FAVORITES, favs);
-      fetchData();
+      await fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -361,11 +362,67 @@ export default function App() {
 
   const deleteRequest = async (id: number) => {
     try {
-      const requests = getLocalData(STORAGE_KEYS.REQUESTS);
-      const rIndex = requests.findIndex((r: any) => r.id === id);
-      if (rIndex !== -1) {
-        requests.splice(rIndex, 1);
-        setLocalData(STORAGE_KEYS.REQUESTS, requests);
+      await supabase.from('requests').delete().eq('id', id);
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCheckout = async (shippingDetails: any) => {
+    if (!activeProposal) return;
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:3000/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposal_id: activeProposal.proposal_id,
+          buyer_id: USER_ID,
+          seller_id: activeProposal.seller_id,
+          item_id: activeProposal.item_id,
+          shipping_details: shippingDetails
+        })
+      });
+
+      if (response.ok) {
+        alert("Ordine effettuato con successo!");
+        setView('dashboard');
+        fetchData();
+      } else {
+        const err = await response.json();
+        alert("Errore durante il checkout: " + err.error);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleShip = async (transactionId: number, trackingInfo: { tracking_id: string, courier: string, seller_iban: string }) => {
+    try {
+      const response = await fetch(`http://localhost:3000/api/transactions/${transactionId}/ship`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(trackingInfo)
+      });
+      if (response.ok) {
+        alert("Spedizione confermata!");
+        fetchData();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleConfirmArrival = async (transactionId: number) => {
+    try {
+      const response = await fetch(`http://localhost:3000/api/transactions/${transactionId}/confirm-arrival`, {
+        method: 'POST'
+      });
+      if (response.ok) {
+        alert("Ricezione confermata! Transazione completata.");
         fetchData();
       }
     } catch (err) {
@@ -377,21 +434,17 @@ export default function App() {
     if (!searchQuery) return;
     setLoading(true);
     try {
-      const requests = getLocalData(STORAGE_KEYS.REQUESTS);
-      requests.push({
-        id: Date.now(),
+      await supabase.from('requests').insert({
         buyer_id: USER_ID,
         query: searchQuery,
         min_price: 0,
         max_price: 0,
         location: 'Ovunque',
-        status: 'active',
-        created_at: new Date().toISOString()
+        status: 'active'
       });
-      setLocalData(STORAGE_KEYS.REQUESTS, requests);
-      runMatching();
+      await runMatching();
       alert("Ricerca salvata! Ti avviseremo quando troveremo un match.");
-      fetchData();
+      await fetchData();
     } catch (err) {
       console.error(err);
     } finally {
@@ -405,13 +458,14 @@ export default function App() {
       <nav className="sticky top-0 z-50 nav-gradient px-6 py-4">
         <div className="max-w-5xl mx-auto flex justify-between items-center">
           <div 
-            className="flex items-center gap-2 cursor-pointer" 
+            className="flex items-center cursor-pointer h-12" 
             onClick={() => setView('home')}
           >
-            <div className="w-8 h-8 bg-brand-start/20 rounded-lg flex items-center justify-center text-brand-start shadow-sm backdrop-blur-md">
-              <Package size={18} strokeWidth={2.5} />
-            </div>
-            <span className="text-xl font-extrabold tracking-tight text-transparent bg-clip-text bg-linear-to-r from-brand-start to-brand-end">ReMatch</span>
+            <img 
+              src="/logo.png" 
+              alt="ReMatch Logo" 
+              className="h-full w-auto object-contain hover:opacity-80 transition-opacity" 
+            />
           </div>
           
           <div className="hidden md:flex items-center gap-8">
@@ -522,87 +576,51 @@ export default function App() {
                 </div>
               </section>
                 
-                {/* Search & Categories */}
-                <div className="ios-card p-4 sm:p-8 glass-card !rounded-[2rem] sm:!rounded-[3rem] shadow-2xl">
-                  <div className="flex flex-col md:flex-row gap-4 sm:gap-5">
-                    <div className="flex-1 relative group">
-                      <Search className="absolute left-5 sm:left-7 top-1/2 -translate-y-1/2 text-ios-gray group-focus-within:text-ios-blue transition-colors duration-300" size={20} />
-                      <input 
-                        type="text" 
-                        placeholder="Cosa stai cercando oggi?"
-                        className="w-full pl-12 sm:pl-16 pr-6 sm:pr-8 py-4 sm:py-5 bg-ios-secondary/50 rounded-2xl sm:rounded-3xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all text-base sm:text-xl font-bold placeholder:text-ios-gray/40"
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex gap-2 sm:gap-3">
-                      <button 
-                        onClick={() => fetchData()}
-                        className="ios-btn-primary flex-1 md:flex-none !px-8 sm:!px-12 !rounded-2xl sm:!rounded-3xl shadow-2xl"
-                      >
-                        Cerca
-                      </button>
-                      {searchQuery && (
-                        <button 
-                          onClick={saveCurrentSearch}
-                          className="p-4 sm:p-5 bg-ios-blue/10 text-ios-blue rounded-2xl sm:rounded-3xl hover:bg-ios-blue/20 transition-all active:scale-90 shadow-lg"
-                          title="Salva questa ricerca"
-                        >
-                          <Bell size={24} />
-                        </button>
-                      )}
-                    </div>
+              {/* Search & Categories */}
+              <div className="ios-card p-4 sm:p-8 glass-card !rounded-[2rem] sm:!rounded-[3rem] shadow-2xl">
+                <div className="flex flex-col md:flex-row gap-4 sm:gap-5">
+                  <div className="flex-1 relative group">
+                    <Search className="absolute left-5 sm:left-7 top-1/2 -translate-y-1/2 text-ios-gray group-focus-within:text-ios-blue transition-colors duration-300" size={20} />
+                    <input 
+                      type="text" 
+                      placeholder="Cosa stai cercando oggi?"
+                      className="w-full pl-12 sm:pl-16 pr-6 sm:pr-8 py-4 sm:py-5 bg-ios-secondary/50 rounded-2xl sm:rounded-3xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all text-base sm:text-xl font-bold placeholder:text-ios-gray/40"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                    />
                   </div>
-                  
-                  <div className="flex gap-2 sm:gap-3 overflow-x-auto py-4 sm:py-6 no-scrollbar">
-                    {CATEGORIES.map(cat => (
-                      <button
-                        key={cat}
-                        onClick={() => setSelectedCategory(cat)}
-                        className={`px-6 sm:px-8 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-black whitespace-nowrap transition-all duration-500 ${
-                          selectedCategory === cat 
-                            ? 'bg-ios-label text-white shadow-2xl scale-105' 
-                            : 'bg-ios-secondary text-ios-gray hover:bg-ios-gray/10 hover:scale-105'
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
+                  <div className="flex gap-2 sm:gap-3">
+                    <button 
+                      onClick={() => fetchData()}
+                      className="ios-btn-primary flex-1 md:flex-none !px-8 sm:!px-12 !rounded-2xl sm:!rounded-3xl shadow-2xl"
+                    >
+                      Cerca
+                    </button>
                   </div>
-                </div>
-
-                {/* Features Section */}
-                <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="ios-card p-8 space-y-4 ios-card-hover group">
-                  <div className="w-14 h-14 bg-ios-blue/10 text-ios-blue rounded-[1.5rem] flex items-center justify-center group-hover:bg-ios-blue group-hover:text-white transition-colors duration-500">
-                    <TrendingUp size={28} />
-                  </div>
-                  <h3 className="text-2xl">Smart Matching</h3>
-                  <p className="text-ios-gray text-sm leading-relaxed">Algoritmo avanzato che connette venditori e acquirenti in base all'intento reale.</p>
                 </div>
                 
-                <div className="ios-card p-8 space-y-4 bg-ios-blue text-white ios-card-hover shadow-2xl shadow-ios-blue/20">
-                  <div className="w-14 h-14 bg-white/20 text-white rounded-[1.5rem] flex items-center justify-center">
-                    <Clock size={28} />
-                  </div>
-                  <h3 className="text-2xl">Esclusività 24h</h3>
-                  <p className="text-white/80 text-sm leading-relaxed">I match sono esclusivi per 24 ore, dando priorità a chi cerca davvero l'oggetto.</p>
+                <div className="flex gap-2 sm:gap-3 overflow-x-auto py-4 sm:py-6 no-scrollbar">
+                  {CATEGORIES.map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-6 sm:px-8 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-black whitespace-nowrap transition-all duration-500 ${
+                        selectedCategory === cat 
+                          ? 'bg-ios-label text-white shadow-2xl scale-105' 
+                          : 'bg-ios-secondary text-ios-gray hover:bg-ios-gray/10 hover:scale-105'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
                 </div>
-                
-                <div className="ios-card p-8 space-y-4 ios-card-hover group">
-                  <div className="w-14 h-14 bg-green-500/10 text-green-500 rounded-[1.5rem] flex items-center justify-center group-hover:bg-green-500 group-hover:text-white transition-colors duration-500">
-                    <CheckCircle2 size={28} />
-                  </div>
-                  <h3 className="text-2xl">Affari Verificati</h3>
-                  <p className="text-ios-gray text-sm leading-relaxed">Gestiamo l'intera transazione, dal pagamento sicuro alla spedizione finale.</p>
-                </div>
-              </section>
+              </div>
 
               {/* Live Marketplace */}
               <section className="space-y-6">
                 <div className="flex justify-between items-end">
                   <div className="space-y-1">
-                    <h2 className="text-2xl">Marketplace Live</h2>
+                    <h2 className="text-2xl font-black">Marketplace Live</h2>
                     <p className="text-ios-gray text-sm">Scopri gli ultimi scambi in tempo reale.</p>
                   </div>
                   <button className="text-ios-blue text-sm font-semibold flex items-center gap-1 hover:translate-x-1 transition-transform duration-200">
@@ -610,70 +628,49 @@ export default function App() {
                   </button>
                 </div>
                 
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                    {items.map((item) => {
-                      const isFav = favorites.some(f => f.id === item.id);
-                      return (
-                        <motion.div 
-                          layout
-                          whileHover={{ y: -8 }}
-                          whileTap={{ scale: 0.98 }}
-                          key={item.id} 
-                          className="ios-card ios-card-hover group cursor-pointer relative"
-                        >
-                          <div className="aspect-[4/5] overflow-hidden relative">
-                            <img 
-                              src={item.image_url} 
-                              alt={item.title} 
-                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
-                              referrerPolicy="no-referrer"
-                            />
-                            <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                            
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleFavorite(item.id);
-                              }}
-                              className={`absolute top-4 right-4 p-2.5 rounded-full backdrop-blur-xl transition-all duration-300 shadow-lg ${isFav ? 'bg-red-500 text-white scale-110' : 'bg-white/70 text-ios-gray hover:text-red-500 hover:scale-110'}`}
-                            >
-                              <Heart size={18} fill={isFav ? "currentColor" : "none"} />
-                            </button>
-                            
-                            <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl text-sm font-bold text-ios-label shadow-xl">
-                              €{item.price}
-                            </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                  {items.map((item) => {
+                    const isFav = favorites.some(f => f.id === item.id);
+                    return (
+                      <motion.div 
+                        layout
+                        whileHover={{ y: -8 }}
+                        whileTap={{ scale: 0.98 }}
+                        key={item.id} 
+                        className="ios-card ios-card-hover group cursor-pointer relative"
+                      >
+                        <div className="aspect-[4/5] overflow-hidden relative">
+                          <img 
+                            src={item.image_url} 
+                            alt={item.title} 
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
+                            referrerPolicy="no-referrer"
+                          />
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFavorite(item.id);
+                            }}
+                            className={`absolute top-4 right-4 p-2.5 rounded-full backdrop-blur-xl shadow-lg ${isFav ? 'bg-red-500 text-white' : 'bg-white/70 text-ios-gray'}`}
+                          >
+                            <Heart size={18} fill={isFav ? "currentColor" : "none"} />
+                          </button>
+                          
+                          <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl text-sm font-bold shadow-xl">
+                            €{item.price}
                           </div>
-                          <div className="p-5 space-y-3">
-                            <div className="space-y-1">
-                              <span className="badge bg-ios-blue/10 text-ios-blue">{item.category}</span>
-                              <h4 className="font-bold text-base truncate">{item.title}</h4>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5 text-ios-gray text-xs font-medium">
-                                <MapPin size={12} />
-                                <span>{item.location}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    // Simple mock message for demo
-                                    alert(`Messaggio inviato a ${item.seller_id} per "${item.title}"!`);
-                                  }}
-                                  className="p-2 bg-ios-secondary rounded-full text-ios-gray hover:text-ios-blue transition-colors"
-                                  title="Contatta Venditore"
-                                >
-                                  <MessageCircle size={14} />
-                                </button>
-                                <ArrowRight size={14} className="text-ios-gray opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-                              </div>
-                            </div>
+                        </div>
+                        <div className="p-5 space-y-3">
+                          <h4 className="font-bold text-base truncate">{item.title}</h4>
+                          <div className="flex items-center justify-between text-xs text-ios-gray">
+                            <span className="flex items-center gap-1"><MapPin size={12} />{item.location}</span>
+                            <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                           </div>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
               </section>
             </motion.div>
           )}
@@ -794,67 +791,131 @@ export default function App() {
           {view === 'buy' && (
             <motion.div 
               key="buy"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
               className="max-w-3xl mx-auto"
             >
-              <div className="ios-card p-6 sm:p-16 glass-card !rounded-[2rem] sm:!rounded-[3.5rem] shadow-2xl space-y-8 sm:space-y-12">
+              <div className="ios-card p-10 sm:p-20 glass-card !rounded-[3rem] shadow-2xl space-y-12">
                 <div className="space-y-4 text-center">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-ios-blue/10 text-ios-blue rounded-2xl sm:rounded-[2rem] flex items-center justify-center mx-auto mb-4 sm:mb-6">
+                  <div className="w-20 h-20 bg-brand-start/10 text-brand-start rounded-[2rem] flex items-center justify-center mx-auto mb-6">
                     <Search size={32} />
                   </div>
-                  <h2 className="text-3xl sm:text-5xl font-display font-black tracking-tight">Cosa Cerchi?</h2>
-                  <p className="text-ios-gray text-base sm:text-xl font-medium max-w-md mx-auto">Dicci cosa desideri e il nostro algoritmo troverà il match perfetto per te.</p>
+                  <h2 className="text-4xl sm:text-6xl font-display font-black tracking-tight">Cerca un Oggetto</h2>
+                  <p className="text-ios-gray text-xl font-medium">Dicci cosa cerchi e ti avviseremo appena appare.</p>
                 </div>
                 
-                <form onSubmit={handleBuy} className="space-y-8 sm:space-y-10">
-                  <div className="space-y-3 sm:space-y-4">
-                    <label className="text-xs sm:text-sm font-black text-ios-gray ml-2 uppercase tracking-[0.2em]">Cosa desideri?</label>
-                    <div className="relative group">
-                      <Search className="absolute left-6 sm:left-8 top-1/2 -translate-y-1/2 text-ios-gray group-focus-within:text-ios-blue transition-colors duration-300" size={20} />
+                <form onSubmit={handleBuy} className="space-y-10">
+                  <div className="space-y-4">
+                    <label className="text-sm font-black text-ios-gray ml-2 uppercase tracking-[0.2em]">Cosa cerchi?</label>
+                    <input 
+                      required
+                      type="text" 
+                      placeholder="es. MacBook Pro, Tavolo Legno..."
+                      className="w-full px-10 py-6 bg-ios-secondary/50 rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all text-2xl font-bold placeholder:text-ios-gray/30"
+                      value={newRequest.query}
+                      onChange={e => setNewRequest({...newRequest, query: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                      <label className="text-sm font-black text-ios-gray ml-2 uppercase tracking-[0.2em]">Prezzo Min (€)</label>
                       <input 
-                        required
-                        type="text" 
-                        placeholder="es. iPhone 15 Pro, Bici da corsa..."
-                        className="w-full pl-14 sm:pl-20 pr-6 sm:pr-10 py-4 sm:py-6 bg-ios-secondary/50 rounded-xl sm:rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all text-lg sm:text-2xl font-bold placeholder:text-ios-gray/30"
-                        value={newRequest.query}
-                        onChange={e => setNewRequest({...newRequest, query: e.target.value})}
+                        type="number" 
+                        placeholder="0"
+                        className="w-full px-10 py-6 bg-ios-secondary/50 rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all text-2xl font-bold placeholder:text-ios-gray/30"
+                        value={newRequest.min_price}
+                        onChange={e => setNewRequest({...newRequest, min_price: e.target.value})}
                       />
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
-                    <div className="space-y-3 sm:space-y-4">
-                      <label className="text-xs sm:text-sm font-black text-ios-gray ml-2 uppercase tracking-[0.2em]">Budget Massimo (€)</label>
+                    <div className="space-y-4">
+                      <label className="text-sm font-black text-ios-gray ml-2 uppercase tracking-[0.2em]">Prezzo Max (€)</label>
                       <input 
-                        required
                         type="number" 
                         placeholder="Qualsiasi"
-                        className="w-full px-6 sm:px-10 py-4 sm:py-6 bg-ios-secondary/50 rounded-xl sm:rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all text-lg sm:text-2xl font-bold placeholder:text-ios-gray/30"
+                        className="w-full px-10 py-6 bg-ios-secondary/50 rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all text-2xl font-bold placeholder:text-ios-gray/30"
                         value={newRequest.max_price}
                         onChange={e => setNewRequest({...newRequest, max_price: e.target.value})}
                       />
                     </div>
-                    <div className="space-y-3 sm:space-y-4">
-                      <label className="text-xs sm:text-sm font-black text-ios-gray ml-2 uppercase tracking-[0.2em]">Dove?</label>
-                      <input 
-                        required
-                        type="text" 
-                        placeholder="Città o Ovunque"
-                        className="w-full px-6 sm:px-10 py-4 sm:py-6 bg-ios-secondary/50 rounded-xl sm:rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all text-lg sm:text-2xl font-bold placeholder:text-ios-gray/30"
-                        value={newRequest.location}
-                        onChange={e => setNewRequest({...newRequest, location: e.target.value})}
-                      />
-                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="text-sm font-black text-ios-gray ml-2 uppercase tracking-[0.2em]">Dove?</label>
+                    <input 
+                      required
+                      type="text" 
+                      placeholder="Città o 'Ovunque'"
+                      className="w-full px-10 py-6 bg-ios-secondary/50 rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all text-2xl font-bold placeholder:text-ios-gray/30"
+                      value={newRequest.location}
+                      onChange={e => setNewRequest({...newRequest, location: e.target.value})}
+                    />
                   </div>
 
                   <button 
                     disabled={loading}
                     type="submit"
-                    className="w-full ios-btn-primary !py-5 sm:!py-8 text-xl sm:text-2xl !rounded-xl sm:!rounded-[2rem] shadow-2xl shadow-ios-blue/30"
+                    className="w-full ios-btn-primary !py-8 text-2xl !rounded-[2rem] shadow-2xl"
                   >
-                    {loading ? 'Analisi in corso...' : 'Trova il mio Match'}
+                    {loading ? 'Salvataggio...' : 'Crea Richiesta Match'}
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          )}
+
+          {view === 'checkout' && activeProposal && (
+            <motion.div 
+              key="checkout"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="max-w-xl mx-auto"
+            >
+              <div className="ios-card p-10 glass-card !rounded-[3rem] shadow-2xl space-y-10">
+                <div className="text-center space-y-4">
+                  <h2 className="text-4xl font-black tracking-tight">Checkout</h2>
+                  <p className="text-ios-gray font-medium">Inserisci i dati per la spedizione</p>
+                </div>
+
+                <div className="flex items-center gap-6 p-6 bg-ios-secondary/30 rounded-[2rem] border border-black/[0.03]">
+                  <img src={activeProposal.image_url} className="w-20 h-20 rounded-2xl object-cover shadow-lg" alt="" />
+                  <div>
+                    <h4 className="font-black text-xl">{activeProposal.title}</h4>
+                    <p className="text-brand-start font-black text-lg">{activeProposal.price}€</p>
+                  </div>
+                </div>
+
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const target = e.target as any;
+                  handleCheckout({
+                    name: target.name.value,
+                    surname: target.surname.value,
+                    email: target.email.value,
+                    phone: target.phone.value,
+                    address: target.address.value,
+                    city: target.city.value,
+                    cap: target.cap.value
+                  });
+                }} className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <input name="name" required placeholder="Nome" className="checkout-input" />
+                    <input name="surname" required placeholder="Cognome" className="checkout-input" />
+                  </div>
+                  <input name="email" type="email" required placeholder="Email" className="checkout-input" />
+                  <input name="phone" required placeholder="Telefono (solo per uso interno)" className="checkout-input" />
+                  <input name="address" required placeholder="Indirizzo completo (Via e numero)" className="checkout-input" />
+                  <div className="grid grid-cols-2 gap-4">
+                    <input name="city" required placeholder="Città" className="checkout-input" />
+                    <input name="cap" required placeholder="CAP" className="checkout-input" />
+                  </div>
+                  <button type="submit" className="w-full ios-btn-primary !py-6 text-xl !rounded-[1.5rem] shadow-xl">
+                    Paga e Conferma (Demo)
+                  </button>
+                  <button type="button" onClick={() => setView('dashboard')} className="w-full py-4 text-ios-gray font-bold hover:text-ios-label transition-colors">
+                    Annulla
                   </button>
                 </form>
               </div>
@@ -893,6 +954,162 @@ export default function App() {
                     Forza Match
                   </button>
                 </div>
+              </div>
+
+              {/* My Transactions Section */}
+              <div className="space-y-8">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-2xl font-black">Le mie Vendite & Acquisti</h3>
+                  <div className="flex gap-2">
+                    <span className="px-3 py-1 bg-ios-secondary rounded-full text-[10px] font-bold text-ios-gray uppercase tracking-widest">Live Flow</span>
+                  </div>
+                </div>
+
+                {transactions.length === 0 ? (
+                  <div className="ios-card p-12 text-center space-y-4 bg-ios-secondary/20 border-2 border-dashed border-black/[0.05]">
+                    <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+                      <Clock size={24} className="text-ios-gray" />
+                    </div>
+                    <p className="text-ios-gray font-bold">Nessuna transazione attiva.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-8">
+                    {transactions.map(t => {
+                      const isSeller = t.seller_id === USER_ID;
+                      const deadlineDate = new Date(t.shipping_deadline);
+                      const now = new Date();
+                      const diff = deadlineDate.getTime() - now.getTime();
+                      const daysLeft = Math.floor(diff / (1000 * 60 * 60 * 24));
+                      const hoursLeft = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                      const isExpired = diff <= 0 && t.status === 'paid';
+
+                      return (
+                        <motion.div key={t.id} layout className="ios-card p-8 group relative overflow-hidden bg-white shadow-xl hover:shadow-2xl transition-all border border-black/[0.02]">
+                          <div className="flex flex-col md:flex-row gap-8">
+                            {/* Item Info */}
+                            <div className="w-full md:w-32 h-32 rounded-3xl overflow-hidden shrink-0 shadow-md">
+                              <img src={t.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                            </div>
+
+                            <div className="flex-1 space-y-6">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${isSeller ? 'bg-ios-blue text-white' : 'bg-brand-start text-white'}`}>
+                                      {isSeller ? 'Vendita' : 'Acquisto'}
+                                    </span>
+                                    <span className="text-ios-gray font-bold text-xs">ID #{t.id}</span>
+                                  </div>
+                                  <h4 className="text-2xl font-black tracking-tight">{t.title}</h4>
+                                  <p className="text-brand-start font-black text-xl">{t.price}€</p>
+                                </div>
+
+                                <div className="text-right">
+                                  <div className={`px-4 py-2 rounded-2xl font-black text-xs uppercase tracking-widest ${
+                                    t.status === 'paid' ? 'bg-orange-100 text-orange-600' : 
+                                    t.status === 'shipped' ? 'bg-blue-100 text-blue-600' :
+                                    t.status === 'delivered' ? 'bg-green-100 text-green-600' :
+                                    'bg-ios-secondary text-ios-gray'
+                                  }`}>
+                                    {t.status === 'paid' ? 'Da Spedire' : t.status === 'shipped' ? 'In Viaggio' : t.status === 'delivered' ? 'Consegnato' : t.status}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Dynamic Content based on Status and Role */}
+                              <div className="p-6 bg-ios-secondary/30 rounded-3xl border border-black/[0.03] space-y-6">
+                                {isSeller ? (
+                                  <>
+                                    {/* Seller Side */}
+                                    {t.status === 'paid' && (
+                                      <div className="space-y-6">
+                                        <div className="flex items-center justify-between p-4 bg-white/80 rounded-2xl border border-black/[0.05] shadow-sm">
+                                          <div className="flex items-center gap-3">
+                                            <Clock size={20} className={isExpired ? 'text-red-500' : 'text-orange-500'} />
+                                            <span className="font-bold text-sm">Tempo Rimasto per Spedire:</span>
+                                          </div>
+                                          <span className={`font-black text-lg ${isExpired ? 'text-red-600' : 'text-orange-600'}`}>
+                                            {isExpired ? 'SCADUTO' : `${daysLeft}g ${hoursLeft}h`}
+                                          </span>
+                                        </div>
+                                        
+                                        <div className="space-y-4">
+                                          <h5 className="text-xs font-black uppercase tracking-widest text-ios-gray">Indirizzo Spedizione</h5>
+                                          <div className="text-sm font-bold leading-relaxed text-ios-label">
+                                            {t.buyer_name} {t.buyer_surname}<br />
+                                            {t.buyer_address}<br />
+                                            {t.buyer_cap}, {t.buyer_city}<br />
+                                            {t.buyer_email}
+                                          </div>
+                                          <p className="text-[10px] text-ios-gray italic font-medium">Nota: Il numero di telefono è gestito solo dalla piattaforma per privacy.</p>
+                                        </div>
+
+                                        <form onSubmit={(e) => {
+                                          e.preventDefault();
+                                          const target = e.target as any;
+                                          handleShip(t.id, {
+                                            tracking_id: target.tracking.value,
+                                            courier: target.courier.value,
+                                            seller_iban: target.iban.value
+                                          });
+                                        }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                          <input name="tracking" required placeholder="Codice Tracking" className="checkout-input !py-3 !text-sm" />
+                                          <input name="courier" required placeholder="Corriere (es. DHL, BRT)" className="checkout-input !py-3 !text-sm" />
+                                          <input name="iban" required placeholder="Il tuo IBAN (per il pagamento)" className="checkout-input !py-3 !text-sm md:col-span-2" />
+                                          <button type="submit" className="md:col-span-2 ios-btn-primary !py-4 !rounded-2xl shadow-xl">
+                                            Conferma Spedizione & Blocca Timer
+                                          </button>
+                                        </form>
+                                      </div>
+                                    )}
+                                    {t.status === 'shipped' && (
+                                      <div className="space-y-2">
+                                        <p className="font-bold">Spedito con {t.courier}</p>
+                                        <p className="text-ios-gray text-sm">Tracking: <span className="font-black text-ios-label">{t.tracking_id}</span></p>
+                                        <p className="text-xs text-orange-600 font-bold mt-4">In attesa che l'acquirente confermi la ricezione.</p>
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {/* Buyer Side */}
+                                    {t.status === 'paid' && (
+                                      <div className="flex items-center gap-4 text-orange-600">
+                                        <Clock size={20} />
+                                        <p className="font-bold">Il venditore sta preparando la spedizione (Scadenza tra {daysLeft}g)</p>
+                                      </div>
+                                    )}
+                                    {t.status === 'shipped' && (
+                                      <div className="space-y-6">
+                                        <div className="space-y-2">
+                                          <p className="font-bold">Oggetto in viaggio!</p>
+                                          <p className="text-ios-gray text-sm">Corriere: <span className="text-ios-label font-bold">{t.courier}</span> | Tracking: <span className="text-ios-label font-bold">{t.tracking_id}</span></p>
+                                        </div>
+                                        <button 
+                                          onClick={() => handleConfirmArrival(t.id)}
+                                          className="w-full bg-green-500 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-green-600 transition-colors"
+                                        >
+                                          Ho ricevuto l'oggetto (Conferma)
+                                        </button>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+
+                                {t.status === 'delivered' && (
+                                  <div className="flex items-center gap-4 text-green-600">
+                                    <CheckCircle2 size={24} />
+                                    <p className="font-black">Ordine Completato!</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Bento Stats Grid */}
@@ -986,13 +1203,13 @@ export default function App() {
                             
                             <div className="flex gap-3 mt-6">
                               <button 
-                                onClick={() => respondToProposal(prop.proposal_id, 'accepted')}
+                                onClick={() => respondToProposal(prop, 'accepted')}
                                 className="flex-1 ios-btn-primary py-3 text-sm shadow-none"
                               >
                                 Accetta
                               </button>
                               <button 
-                                onClick={() => respondToProposal(prop.proposal_id, 'rejected')}
+                                onClick={() => respondToProposal(prop, 'rejected')}
                                 className="px-6 py-3 bg-ios-secondary text-ios-gray font-semibold rounded-2xl text-sm hover:bg-ios-gray/10 hover:text-ios-label active:scale-95 transition-all"
                               >
                                 Rifiuta
@@ -1172,13 +1389,14 @@ export default function App() {
         <div className="max-w-5xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
             <div className="col-span-2 space-y-6">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-linear-to-br from-brand-start to-brand-end rounded-xl flex items-center justify-center text-white shadow-sm">
-                  <Package size={22} />
-                </div>
-                <span className="text-2xl font-extrabold tracking-tight text-transparent bg-clip-text bg-linear-to-r from-brand-start to-brand-end">ReMatch</span>
+              <div className="flex items-center h-16">
+                <img 
+                  src="/logo.png" 
+                  alt="ReMatch Logo" 
+                  className="h-6 w-auto object-contain" 
+                />
               </div>
-              <p className="text-ios-gray text-lg max-w-sm leading-relaxed">
+              <p className="text-ios-gray text-lg max-w-sm leading-relaxed font-medium">
                 Il marketplace intelligente che connette l'intento con l'inventario. Vendi più velocemente, compra meglio.
               </p>
               <div className="flex gap-4">
