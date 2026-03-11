@@ -172,7 +172,7 @@ export default function App() {
         .filter(p => {
           const reqs = getLocalData(STORAGE_KEYS.REQUESTS);
           const r = reqs.find((req: any) => req.id === p.request_id);
-          return r && r.buyer_id === USER_ID;
+          return r && r.buyer_id === USER_ID && p.status === 'pending';
         })
         .map(p => {
           const item = getLocalData(STORAGE_KEYS.ITEMS).find((i: any) => i.id === p.item_id);
@@ -183,7 +183,7 @@ export default function App() {
       // Top Searches
       const allRequests: Request[] = getLocalData(STORAGE_KEYS.REQUESTS);
       const searchCounts: Record<string, number> = {};
-      allRequests.forEach(r => {
+      allRequests.filter(r => r.status === 'active').forEach(r => {
         const q = r.query.toLowerCase().trim();
         if (q) searchCounts[q] = (searchCounts[q] || 0) + 1;
       });
@@ -200,7 +200,7 @@ export default function App() {
       setFavorites(userFavs);
 
       // User Requests
-      const userReqs = allRequests.filter(r => r.buyer_id === USER_ID);
+      const userReqs = allRequests.filter(r => r.buyer_id === USER_ID && r.status === 'active');
       setUserRequests(userReqs);
 
     } catch (err) {
@@ -322,8 +322,20 @@ export default function App() {
       const proposals = getLocalData(STORAGE_KEYS.PROPOSALS);
       const pIndex = proposals.findIndex((p: any) => p.id === id);
       if (pIndex !== -1) {
+        const proposal = proposals[pIndex];
         proposals[pIndex].status = status;
         setLocalData(STORAGE_KEYS.PROPOSALS, proposals);
+
+        // If accepted, mark the associated request as completed
+        if (status === 'accepted') {
+          const requests = getLocalData(STORAGE_KEYS.REQUESTS);
+          const rIndex = requests.findIndex((r: any) => r.id === proposal.request_id);
+          if (rIndex !== -1) {
+            requests[rIndex].status = 'completed';
+            setLocalData(STORAGE_KEYS.REQUESTS, requests);
+          }
+        }
+        
         fetchData();
       }
     } catch (err) {
@@ -968,10 +980,6 @@ export default function App() {
                                 <div className="flex items-center gap-1.5">
                                   <MapPin size={14} />
                                   <span>{prop.location}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 text-red-500">
-                                  <Clock size={14} />
-                                  <span>Scade tra 23h</span>
                                 </div>
                               </div>
                             </div>
