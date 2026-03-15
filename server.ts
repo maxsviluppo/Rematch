@@ -141,7 +141,7 @@ async function startServer() {
       origin: "*",
     }
   });
-  const PORT = 3000;
+  const PORT = 3007;
 
   // Socket.io connection handling
   io.on("connection", (socket) => {
@@ -498,6 +498,7 @@ async function startServer() {
           const itemLoc = (item.location || "").toLowerCase().trim();
           const locationMatch = !reqLoc || 
                                reqLoc === "ovunque" || 
+                               reqLoc === "tutte le città" || 
                                reqLoc === "anywhere" || 
                                itemLoc.includes(reqLoc) || 
                                reqLoc.includes(itemLoc);

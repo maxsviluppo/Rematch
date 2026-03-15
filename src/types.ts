@@ -6,6 +6,7 @@ export interface Item {
   price: number;
   location: string;
   image_url: string;
+  images?: string[];
   category?: string;
   status: 'available' | 'sold';
   created_at: string;
@@ -56,6 +57,7 @@ export interface Transaction {
   title: string;
   price: number;
   image_url: string;
+  images?: string[];
   created_at: string;
   updated_at: string;
 }
