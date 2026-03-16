@@ -511,29 +511,22 @@ async function startServer() {
       const availableItems = (await pool.query("SELECT * FROM items WHERE status = 'available'")).rows;
       
       let matchesCreated = 0;
-      console.log(`Starting match for ${activeRequests.length} requests and ${availableItems.length} items`);
+      console.log(`Matching: ${activeRequests.length} requests vs ${availableItems.length} items`);
+      
       for (const request of activeRequests) {
         const queryLower = (request.query || "").toLowerCase().trim();
         if (!queryLower) continue;
 
         const queryWords = queryLower.split(/\s+/).filter((w: string) => w.length > 0);
-        console.log(`Checking request: "${queryLower}" (ID: ${request.id})`);
         
         for (const item of availableItems) {
           const titleLower = (item.title || "").toLowerCase();
           const descLower = (item.description || "").toLowerCase();
-          console.log(`  Against item: "${item.title}" (ID: ${item.id})`);
           
-          // 1. Price check - handle NaN, null, 0
+          // 1. Price check
           const minP = (request.min_price !== null && !isNaN(request.min_price)) ? request.min_price : 0;
           const maxP = (request.max_price !== null && !isNaN(request.max_price) && request.max_price > 0) ? request.max_price : Infinity;
-          
-          const priceMatch = item.price >= minP && item.price <= maxP;
-          
-          // FOR DEMO: Log but don't block if price mismatch
-          if (!priceMatch) {
-            console.log(`    Price mismatch: item ${item.price} not in [${minP}, ${maxP}] - Proceeding anyway for demo`);
-          }
+          if (item.price < minP || item.price > maxP) continue;
 
           // 2. Location check
           const reqLoc = (request.location || "").toLowerCase().trim();
@@ -544,44 +537,27 @@ async function startServer() {
                                reqLoc === "anywhere" || 
                                itemLoc.includes(reqLoc) || 
                                reqLoc.includes(itemLoc);
-          
-          // FOR DEMO: Log but don't block if location mismatch
-          if (!locationMatch) {
-            console.log(`    Location mismatch: req "${reqLoc}" vs item "${itemLoc}" - Proceeding anyway for demo`);
-          }
+          if (!locationMatch) continue;
 
           // 3. Keyword check
-          let isMatch = false;
-          
-          // Check if the full query string is found anywhere
           const fullQueryPresent = titleLower.includes(queryLower) || descLower.includes(queryLower);
-          
-          // Check if ANY query word is present (extremely lenient)
           const matchedWords = queryWords.filter((word: string) => titleLower.includes(word) || descLower.includes(word));
           const anyWordMatch = matchedWords.length > 0;
 
-          isMatch = fullQueryPresent || anyWordMatch;
-          console.log(`    Keyword match: ${isMatch} (full: ${fullQueryPresent}, any: ${anyWordMatch})`);
-
-          if (isMatch) {
+          if (fullQueryPresent || anyWordMatch) {
             // Check if proposal already exists
-            const existing = (await pool.query("SELECT id FROM proposals WHERE request_id = $1 AND item_id = $2", [request.id, item.id])).rows[0];
-            if (!existing) {
-              const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h expiry
+            const existingResult = await pool.query("SELECT id FROM proposals WHERE request_id = $1 AND item_id = $2", [request.id, item.id]);
+            if (existingResult.rows.length === 0) {
+              const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
               await pool.query("INSERT INTO proposals (request_id, item_id, expires_at) VALUES ($1, $2, $3)", [request.id, item.id, expiresAt]);
               matchesCreated++;
               
-              // Notify buyer
               io.to(request.buyer_id).emit("notification", {
                 type: "matched_item",
                 title: "Nuovo Match Trovato!",
                 body: `Abbiamo trovato un match per la tua ricerca: "${item.title}"`,
                 data: { itemId: item.id, requestId: request.id }
               });
-
-              console.log(`    MATCH CREATED!`);
-            } else {
-              console.log(`    Match already exists.`);
             }
           }
         }

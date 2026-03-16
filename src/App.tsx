@@ -139,6 +139,14 @@ export default function App() {
     max_price: '',
     location: ''
   });
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   const [customCitySell, setCustomCitySell] = useState('');
   const [customCityBuy, setCustomCityBuy] = useState('');
   const [isCustomCitySell, setIsCustomCitySell] = useState(false);
@@ -202,8 +210,16 @@ export default function App() {
       setSession(session);
       if (session?.user) {
         fetchUserProfile(session.user.id);
+        // Automatically close auth panel and go to home if logged in
+        if (view === 'auth') {
+          setView('home');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
       } else {
         setCurrentUser(null);
+        setFavorites([]);
+        setProposals([]);
+        setTransactions([]);
       }
     });
 
@@ -211,46 +227,169 @@ export default function App() {
   }, []);
 
   const fetchUserProfile = async (userId: string) => {
+    // Proactively set user from session metadata if possible
+    if (session?.user?.user_metadata?.nome) {
+      setCurrentUser({ id: userId, nome: session.user.user_metadata.nome });
+    }
+
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('users')
         .select('nome')
         .eq('id', userId)
         .single();
 
-      setCurrentUser({
-        id: userId,
-        nome: data?.nome || 'Utente'
-      });
+      if (data?.nome) {
+        setCurrentUser({ id: userId, nome: data.nome });
+      } else if (!currentUser) {
+        setCurrentUser({ id: userId, nome: 'Utente' });
+      }
     } catch (error) {
-      console.error('Error fetching profile:', error);
-      setCurrentUser({ id: userId, nome: 'Utente' });
+      if (!currentUser) {
+        setCurrentUser({ id: userId, nome: 'Utente' });
+      }
     }
   };
 
   useEffect(() => {
-    fetchData();
+    // Initial fetch of public items
+    fetchItems();
+    
+    // Top searches only once
+    fetchTopSearches();
+  }, []);
 
-    let interval: any;
+  useEffect(() => {
+    // Fetch user-specific data when user changes
     if (currentUser) {
       notificationService.init(currentUser.id);
-
-      /*
-      interval = setInterval(() => {
-        runMatching().then(() => fetchData());
-      }, 60000);
-      */
+      fetchUserRelatedData();
     }
-
-    if ("Notification" in window) {
-      setNotificationsEnabled(Notification.permission === "granted");
-    }
-
+    
     return () => {
-      notificationService.disconnect();
-      if (interval) clearInterval(interval);
+      if (currentUser) {
+        notificationService.disconnect();
+      }
     };
-  }, [view, searchQuery, selectedCategories, maxPriceFilter, currentUser]);
+  }, [currentUser]);
+
+  useEffect(() => {
+    // Filtered items fetch - triggered by debounced search or view changes
+    fetchItems();
+  }, [view, debouncedSearchQuery, selectedCategories, maxPriceFilter]);
+
+  const fetchTopSearches = async () => {
+    if (topSearches.length > 0) return;
+    try {
+      const { data: sampleReqs } = await supabase
+        .from('requests')
+        .select('query')
+        .eq('status', 'active')
+        .limit(200);
+      
+      const searchCounts: Record<string, number> = {};
+      (sampleReqs || []).forEach(r => {
+        const q = r.query?.toLowerCase().trim();
+        if (q) searchCounts[q] = (searchCounts[q] || 0) + 1;
+      });
+      const top = Object.entries(searchCounts)
+        .map(([query, count]) => ({ query, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+      setTopSearches(top);
+    } catch (e) {
+      console.error("Top searches error:", e);
+    }
+  };
+
+  const fetchItems = async () => {
+    // If we have items and no active filter, don't re-fetch unless on vetrina/home
+    if (items.length > 0 && !debouncedSearchQuery && selectedCategories.includes('Tutte') && maxPriceFilter === 5000 && view !== 'home' && view !== 'vetrina') {
+      return;
+    }
+
+    try {
+      const { data: allItems, error: itemsError } = await supabase
+        .from('items')
+        .select('*')
+        .eq('status', 'available')
+        .order('created_at', { ascending: false })
+        .limit(50); 
+
+      if (itemsError) throw itemsError;
+
+      let filteredItems = allItems || [];
+      if (debouncedSearchQuery || (!selectedCategories.includes('Tutte') && selectedCategories.length > 0) || maxPriceFilter < 5000) {
+        filteredItems = filteredItems.filter(item => {
+          const matchesSearch = !debouncedSearchQuery ||
+            item.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+            item.description.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
+
+          const matchesCategory = selectedCategories.includes('Tutte') ||
+                                 selectedCategories.length === 0 ||
+                                 selectedCategories.includes(item.category);
+
+          const matchesPrice = item.price <= maxPriceFilter;
+
+          return matchesSearch && matchesCategory && matchesPrice;
+        });
+      }
+      setItems(filteredItems);
+    } catch (err) {
+      console.error("Items fetch error:", err);
+    }
+  };
+
+  const fetchUserRelatedData = async () => {
+    if (!session?.user?.id) return;
+    try {
+      // Parallel fetch for speed
+      const [reqsRes, favsRes, transRes] = await Promise.all([
+        supabase.from('requests').select('*').eq('buyer_id', currentUser.id).eq('status', 'active'),
+        supabase.from('favorites').select('item_id, items(*)').eq('user_id', currentUser.id),
+        fetch(`/api/transactions/${currentUser.id}`).then(r => r.ok ? r.json() : [])
+      ]);
+
+      if (reqsRes.data) {
+        setUserRequests(reqsRes.data);
+        // Fetch proposals for these requests
+        const { data: props } = await supabase
+          .from('proposals')
+          .select('*, items(*)')
+          .eq('status', 'pending')
+          .in('request_id', reqsRes.data.map(r => r.id));
+        
+        if (props) {
+          setProposals(props.map(p => ({
+            ...p.items,
+            proposal_id: p.id,
+            request_id: p.request_id,
+            item_id: p.item_id,
+            status: p.status,
+            expires_at: p.expires_at
+          })));
+        }
+      }
+
+      if (favsRes.data) {
+        const favItems = favsRes.data.map(f => {
+          if (!f.items) return null;
+          return Array.isArray(f.items) ? f.items[0] : f.items;
+        }).filter(Boolean) as Item[];
+        setFavorites(favItems);
+      }
+
+      setTransactions(transRes || []);
+    } catch (err) {
+      console.error("User data fetch error:", err);
+    }
+  };
+
+  const fetchData = async () => {
+    setLoading(true);
+    await Promise.all([fetchItems(), fetchUserRelatedData()]);
+    setLoading(false);
+  };
 
   const handleEnableNotifications = async () => {
     const granted = await notificationService.requestPermission();
@@ -261,11 +400,24 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    notificationService.disconnect();
-    setSession(null);
-    setCurrentUser(null);
-    goTo('home');
+    try {
+      await supabase.auth.signOut();
+      notificationService.disconnect();
+      setSession(null);
+      setCurrentUser(null);
+      setFavorites([]);
+      setProposals([]);
+      setTransactions([]);
+      setUserRequests([]);
+      setView('home');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      console.error("Logout error:", err);
+      // Force local logout even if server fails
+      setSession(null);
+      setCurrentUser(null);
+      setView('home');
+    }
   };
 
   const handleDeleteAccount = async () => {
@@ -326,116 +478,49 @@ export default function App() {
     }
   };
 
-  const fetchData = async () => {
-    setLoading(true);
+  // fetchData is now a combined utility, removing the old standalone implementation below
+
+
+  const runMatching = async (specificRequestId?: number, specificItemId?: number) => {
     try {
-      // 1. Fetch Items
-      const { data: allItems, error: itemsError } = await supabase
-        .from('items')
-        .select('*')
-        .eq('status', 'available')
-        .order('created_at', { ascending: false });
+      let requestsData = [];
+      let itemsData = [];
 
-      if (itemsError) throw itemsError;
-
-      let filteredItems = allItems || [];
-      if (searchQuery || (!selectedCategories.includes('Tutte') && selectedCategories.length > 0) || maxPriceFilter < 5000) {
-        filteredItems = filteredItems.filter(item => {
-          const matchesSearch = !searchQuery ||
-            item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.description.toLowerCase().includes(searchQuery.toLowerCase());
-
-          const matchesCategory = selectedCategories.includes('Tutte') ||
-                                 selectedCategories.length === 0 ||
-                                 selectedCategories.includes(item.category);
-
-          const matchesPrice = item.price <= maxPriceFilter;
-
-          return matchesSearch && matchesCategory && matchesPrice;
-        });
+      if (specificRequestId) {
+        const { data } = await supabase.from('requests').select('*').eq('id', specificRequestId);
+        requestsData = data || [];
+        const { data: itms } = await supabase.from('items').select('id, title, description, price, location, seller_id').eq('status', 'available').limit(500);
+        itemsData = itms || [];
+      } else if (specificItemId) {
+        const { data } = await supabase.from('items').select('id, title, description, price, location, seller_id').eq('id', specificItemId).eq('status', 'available');
+        itemsData = data || [];
+        const { data: reqs } = await supabase.from('requests').select('*').eq('status', 'active').limit(500);
+        requestsData = reqs || [];
+      } else {
+        // Fallback to minimal full matching if necessary, but limit it
+        const { data: reqs } = await supabase.from('requests').select('*').eq('status', 'active').limit(100);
+        requestsData = reqs || [];
+        const { data: itms } = await supabase.from('items').select('id, title, description, price, location, seller_id').eq('status', 'available').limit(100);
+        itemsData = itms || [];
       }
-      setItems(filteredItems);
 
-      // 2. Fetch User Requests & Proposals
-      const { data: userReqs, error: reqsError } = await supabase
-        .from('requests')
-        .select('*')
-        .eq('buyer_id', (currentUser?.id || ''))
-        .eq('status', 'active');
+      if (!requestsData.length || !itemsData.length) return 0;
 
-      if (reqsError) throw reqsError;
-      setUserRequests(userReqs || []);
-
-      const { data: userProposals, error: propError } = await supabase
+      // Fetch only potentially relevant proposals to avoid full table scan
+      const reqIds = requestsData.map(r => r.id);
+      const itemIds = itemsData.map(i => i.id);
+      
+      const { data: existingProposals } = await supabase
         .from('proposals')
-        .select('*, items(*)')
-        .eq('status', 'pending');
-
-      if (propError) throw propError;
-
-      // Filter proposals where the request belongs to (currentUser?.id || '')
-      const filteredProposals = (userProposals || []).filter(p => {
-        const req = userReqs?.find(r => r.id === p.request_id);
-        return !!req;
-      }).map(p => ({
-        ...p.items,
-        proposal_id: p.id,
-        request_id: p.request_id,
-        item_id: p.item_id,
-        status: p.status,
-        expires_at: p.expires_at
-      }));
-      setProposals(filteredProposals);
-
-      // 3. Top Searches (This could be optimized with a view or separate state)
-      const { data: allReqs } = await supabase.from('requests').select('query, status').eq('status', 'active');
-      const searchCounts: Record<string, number> = {};
-      (allReqs || []).forEach(r => {
-        const q = r.query?.toLowerCase().trim();
-        if (q) searchCounts[q] = (searchCounts[q] || 0) + 1;
-      });
-      const top = Object.entries(searchCounts)
-        .map(([query, count]) => ({ query, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 100);
-      setTopSearches(top);
-
-      // 4. Favorites (Restored)
-      const { data: favs, error: favError } = await supabase
-        .from('favorites')
-        .select('item_id, items(*)')
-        .eq('user_id', (currentUser?.id || ''));
-
-      if (favError) throw favError;
-      setFavorites((favs || []).map(f => f.items));
-
-      // 5. Fetch Transactions (from Express API)
-      const resTrans = await fetch(`/api/transactions/${(currentUser?.id || '')}`);
-      const trans = await resTrans.json();
-      setTransactions(trans || []);
-
-    } catch (err) {
-      console.error("Fetch error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const runMatching = async () => {
-    // This is a client-side implementation of matchmaking for demo
-    // In production, this should be a database function or recurring job
-    try {
-      const { data: requests } = await supabase.from('requests').select('*').eq('status', 'active');
-      const { data: items } = await supabase.from('items').select('*').eq('status', 'available');
-      const { data: existingProposals } = await supabase.from('proposals').select('*');
-
-      if (!requests || !items) return 0;
+        .select('request_id, item_id')
+        .in('request_id', reqIds)
+        .in('item_id', itemIds);
 
       let matchesCreated = 0;
-      for (const req of requests) {
-        for (const item of items) {
-          // Skip if the item belongs to the same user who made the request
+      for (const req of requestsData) {
+        for (const item of itemsData) {
           if (item.seller_id === req.buyer_id) continue;
+          
           const query = req.query.toLowerCase();
           const title = item.title.toLowerCase();
           const desc = item.description.toLowerCase();
@@ -444,7 +529,7 @@ export default function App() {
             if ((req.min_price === 0 || item.price >= req.min_price) &&
                 (req.max_price === 0 || item.price <= req.max_price)) {
 
-              const exists = existingProposals?.find((p: any) => p.request_id === req.id && p.item_id === item.id);
+              const exists = existingProposals?.some((p: any) => p.request_id === req.id && p.item_id === item.id);
               if (!exists) {
                 const expiresAt = new Date();
                 expiresAt.setHours(expiresAt.getHours() + 24);
@@ -491,7 +576,7 @@ export default function App() {
         if (error) throw error;
         alert("Annuncio aggiornato con successo!");
       } else {
-        const { error } = await supabase.from('items').insert({
+        const { data: insertedItem, error } = await supabase.from('items').insert({
           title: newItem.title,
           description: newItem.description,
           price: parseFloat(newItem.price),
@@ -499,11 +584,12 @@ export default function App() {
           category: newItem.category,
           image_url: imagePreviews[0] || newItem.image_url,
           images: imagePreviews.length > 0 ? imagePreviews : [newItem.image_url],
-          seller_id: (currentUser?.id || ''),
+          seller_id: (session?.user?.id || ''),
           status: 'available'
-        });
+        }).select('id').single();
+
         if (error) throw error;
-        await runMatching();
+        if (insertedItem) await runMatching(undefined, insertedItem.id);
         alert("Annuncio pubblicato con successo!");
       }
 
@@ -541,18 +627,18 @@ export default function App() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.from('requests').insert({
+      const { data: insertedReq, error } = await supabase.from('requests').insert({
         query: newRequest.query,
         min_price: parseFloat(newRequest.min_price) || 0,
         max_price: parseFloat(newRequest.max_price) || 0,
         location: newRequest.location,
-        buyer_id: (currentUser?.id || ''),
+        buyer_id: (session?.user?.id || ''),
         status: 'active'
-      });
+      }).select('id').single();
 
       if (error) throw error;
 
-      await runMatching();
+      if (insertedReq) await runMatching(insertedReq.id);
       requireAuth('dashboard');
       setNewRequest({ query: '', min_price: '', max_price: '', location: '' });
       await fetchData();
@@ -580,23 +666,38 @@ export default function App() {
   };
 
   const toggleFavorite = async (itemId: number) => {
-    if (!session) { setView('auth'); return; }
+    if (!session || !currentUser) { setView('auth'); return; }
+    
+    // Optimistic Update
+    const isCurrentlyFav = favorites.some(f => f.id === itemId);
+    const itemToToggle = items.find(i => i.id === itemId) || (isCurrentlyFav ? favorites.find(f => f.id === itemId) : null);
+    
+    if (isCurrentlyFav) {
+      setFavorites(prev => prev.filter(f => f.id !== itemId));
+    } else if (itemToToggle) {
+      setFavorites(prev => [...prev, itemToToggle]);
+    }
+
     try {
-      const { data: existing } = await supabase
+      const { data: locals } = await supabase
         .from('favorites')
-        .select('*')
-        .eq('user_id', (currentUser?.id || ''))
-        .eq('item_id', itemId)
-        .single();
+        .select('id')
+        .eq('user_id', currentUser.id)
+        .eq('item_id', itemId);
+      
+      const existing = locals?.[0];
 
       if (existing) {
         await supabase.from('favorites').delete().eq('id', existing.id);
       } else {
-        await supabase.from('favorites').insert({ user_id: (currentUser?.id || ''), item_id: itemId });
+        await supabase.from('favorites').insert({ user_id: currentUser.id, item_id: itemId });
       }
+      // Re-fetch to ensure sync with server, but UI already updated
       await fetchData();
     } catch (err) {
-      console.error(err);
+      console.error("Toggle favorite error:", err);
+      // Rollback on error
+      fetchData();
     }
   };
 
@@ -701,18 +802,21 @@ export default function App() {
   };
 
   const saveCurrentSearch = async () => {
+    if (!session) { setView('auth'); return; }
     if (!searchQuery) return;
     setLoading(true);
     try {
-      await supabase.from('requests').insert({
-        buyer_id: (currentUser?.id || ''),
+      const { data: insertedReq, error } = await supabase.from('requests').insert({
+        buyer_id: (session?.user?.id || ''),
         query: searchQuery,
         min_price: 0,
         max_price: 0,
         location: 'Tutte le città',
         status: 'active'
-      });
-      await runMatching();
+      }).select('id').single();
+
+      if (error) throw error;
+      if (insertedReq) await runMatching(insertedReq.id);
       alert("Ricerca salvata! Ti avviseremo quando troveremo un match.");
       await fetchData();
     } catch (err) {
@@ -879,7 +983,7 @@ export default function App() {
           <div className="pt-10">
             <Auth onLogin={(id, nome) => {
               setCurrentUser({ id, nome });
-              requireAuth('dashboard');
+              goTo('home');
             }} />
           </div>
         )}
@@ -931,12 +1035,28 @@ export default function App() {
                     <input
                       type="text"
                       placeholder={t('search_placeholder')}
-                      className="w-full pl-11 pr-4 py-3.5 bg-ios-secondary rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-end/30 transition-all text-base font-semibold placeholder:text-ios-gray/50"
+                      className="w-full pl-11 pr-12 py-3.5 bg-ios-secondary rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-end/30 transition-all text-base font-semibold placeholder:text-ios-gray/50"
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && (setDebouncedSearchQuery(searchQuery), fetchData())}
                     />
+                    {searchQuery && (
+                      <button 
+                        onClick={() => saveCurrentSearch()}
+                        title="Salva questa ricerca"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-brand-end hover:bg-brand-end/10 rounded-lg transition-all"
+                      >
+                        <Heart size={18} />
+                      </button>
+                    )}
                   </div>
-                  <button onClick={() => fetchData()} className="ios-btn-primary whitespace-nowrap">
+                  <button 
+                    onClick={() => {
+                      setDebouncedSearchQuery(searchQuery);
+                      fetchData();
+                    }} 
+                    className="ios-btn-primary whitespace-nowrap"
+                  >
                     {t('search_cta')}
                   </button>
                 </div>
@@ -1455,7 +1575,7 @@ export default function App() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
                   <div className="space-y-1">
                     <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('active_listings')}</p>
-                    <p className="text-4xl font-black">{items.filter(i => i.seller_id === (currentUser?.id || '')).length}</p>
+                    <p className="text-4xl font-black">{items.filter(i => i.seller_id === (session?.user?.id || '')).length}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('matches_found')}</p>
@@ -1475,7 +1595,7 @@ export default function App() {
               {/* 2. 4 Information Containers (Stats Summary) */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                 {[
-                  { label: t('in_sale'), value: items.filter(i => i.seller_id === (currentUser?.id || '')).length, icon: <Package size={18} />, color: 'bg-brand-end/10 text-brand-end' },
+                  { label: t('in_sale'), value: items.filter(i => i.seller_id === (session?.user?.id || '')).length, icon: <Package size={18} />, color: 'bg-brand-end/10 text-brand-end' },
                   { label: t('my_searches'), value: userRequests.length, icon: <Search size={18} />, color: 'bg-ios-blue/10 text-ios-blue' },
                   { label: t('matches_found'), value: proposals.length, icon: <Bell size={18} />, color: 'bg-green-500/10 text-green-600' },
                   { label: t('saved_items'), value: favorites.length, icon: <Heart size={18} />, color: 'bg-red-500/10 text-red-500' },
@@ -1627,11 +1747,11 @@ export default function App() {
                     <div className="flex items-center justify-between">
                       <h3 className="rm-section-title">{t('in_sale')}</h3>
                       <span className="text-ios-gray text-xs font-medium">
-                        {items.filter(i => i.seller_id === (currentUser?.id || '')).length} {t('items_count')}
+                        {items.filter(i => i.seller_id === (session?.user?.id || '')).length} {t('items_count')}
                       </span>
                     </div>
 
-                    {items.filter(i => i.seller_id === (currentUser?.id || '')).length === 0 ? (
+                    {items.filter(i => i.seller_id === (session?.user?.id || '')).length === 0 ? (
                       <div className="ios-card p-12 border-2 border-dashed border-ios-gray/10 flex flex-col items-center justify-center text-center space-y-3">
                         <div className="w-12 h-12 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
                           <Package size={24} />
@@ -1640,7 +1760,7 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                        {items.filter(i => i.seller_id === (currentUser?.id || '')).map((item) => (
+                        {items.filter(i => i.seller_id === (session?.user?.id || '')).map((item) => (
                           <motion.div
                             layout
                             key={item.id}
@@ -2366,7 +2486,7 @@ export default function App() {
 
                 {/* Product Detail Actions */}
                 <div className="pt-6 border-t border-black/[0.05] space-y-6">
-                  {currentUser?.id === selectedItem.seller_id ? (
+                  {session?.user?.id === selectedItem.seller_id ? (
                     <div className="space-y-6">
                       {/* Seller Stats */}
                       <div className="flex items-center gap-6 p-4 bg-ios-secondary/30 rounded-2xl border border-black/5">
