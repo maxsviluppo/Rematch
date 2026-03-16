@@ -8,6 +8,7 @@ import { Server } from "socket.io";
 import dotenv from "dotenv";
 
 dotenv.config();
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -23,7 +24,9 @@ const pool = new Pool({
 // Initialize Database (Schema should be created in Supabase dashboard or via initial migration)
 async function initDb() {
   try {
+    console.log("Connecting to DB...");
     const client = await pool.connect();
+    console.log("DB Connected!");
     
     // 1. Create items table
     await client.query(`
@@ -138,7 +141,6 @@ async function initDb() {
     console.log("SUCCESS: Connected to Supabase PostgreSQL and ensured schema exists");
   } catch (err: any) {
     console.error("DATABASE INITIALIZATION ERROR:", err.message || err);
-    console.error("Connection config host:", 'db.lydfzgzvxrayytzjgbmz.supabase.co');
   }
 }
 
@@ -307,6 +309,9 @@ async function startServer() {
       const deadline = new Date();
       deadline.setDate(deadline.getDate() + 5);
 
+      // Handle proposal_id 0 (direct purchase) by setting it to null
+      const actualProposalId = (proposal_id && proposal_id !== 0) ? proposal_id : null;
+
       const result = await pool.query(`
         INSERT INTO transactions (
           proposal_id, buyer_id, seller_id, item_id, 
@@ -317,20 +322,24 @@ async function startServer() {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'paid', $13, $14, $15, $16, $17)
         RETURNING id
       `, [
-        proposal_id, buyer_id, seller_id, item_id,
+        actualProposalId, buyer_id, seller_id, item_id,
         shipping_details.name, shipping_details.surname, shipping_details.email, shipping_details.phone,
         shipping_details.address, shipping_details.city, shipping_details.cap,
         deadline,
         title, price, category, image_url, JSON.stringify(images || [])
       ]);
 
-      // Update proposal status
-      await pool.query("UPDATE proposals SET status = 'accepted' WHERE id = $1", [proposal_id]);
+      // Update proposal status if exists
+      if (actualProposalId) {
+        await pool.query("UPDATE proposals SET status = 'accepted' WHERE id = $1", [actualProposalId]);
+      }
+      
       // Update item status
       await pool.query("UPDATE items SET status = 'sold' WHERE id = $1", [item_id]);
 
       res.json({ id: result.rows[0].id });
     } catch (error: any) {
+      console.error("TRANSACTION ERROR:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -356,7 +365,13 @@ async function startServer() {
       const { id } = req.params;
       const { tracking_id, courier, seller_iban } = req.body;
       
-      await pool.query(`
+      console.log(`CONFIRM SHIPMENT: Transaction ID=${id}`, { tracking_id, courier, seller_iban });
+
+      if (!id || id === 'undefined') {
+        return res.status(400).json({ error: "ID Transazione non valido" });
+      }
+
+      const result = await pool.query(`
         UPDATE transactions SET 
           tracking_id = $1, 
           courier = $2, 
@@ -364,11 +379,19 @@ async function startServer() {
           shipped_at = NOW(),
           status = 'shipped'
         WHERE id = $4
+        RETURNING id
       `, [tracking_id, courier, seller_iban, id]);
 
+      if (result.rowCount === 0) {
+        console.warn(`CONFIRM SHIPMENT FAILED: Transaction ${id} not found`);
+        return res.status(404).json({ error: "Transazione non trovata" });
+      }
+
+      console.log(`CONFIRM SHIPMENT SUCCESS: Transaction ${id} updated to 'shipped'`);
       res.json({ success: true });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("CONFIRM SHIPMENT ERROR:", error);
+      res.status(500).json({ error: error.message || "Errore interno del server" });
     }
   });
 

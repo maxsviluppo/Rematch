@@ -345,9 +345,9 @@ export default function App() {
     try {
       // Parallel fetch for speed
       const [reqsRes, favsRes, transRes] = await Promise.all([
-        supabase.from('requests').select('*').eq('buyer_id', currentUser.id).eq('status', 'active'),
-        supabase.from('favorites').select('item_id, items(*)').eq('user_id', currentUser.id),
-        fetch(`/api/transactions/${currentUser.id}`).then(r => r.ok ? r.json() : [])
+        supabase.from('requests').select('*').eq('buyer_id', session.user.id).eq('status', 'active'),
+        supabase.from('favorites').select('item_id, items(*)').eq('user_id', session.user.id),
+        fetch(`/api/transactions/${session.user.id}`).then(r => r.ok ? r.json() : [])
       ]);
 
       if (reqsRes.data) {
@@ -387,8 +387,13 @@ export default function App() {
 
   const fetchData = async () => {
     setLoading(true);
-    await Promise.all([fetchItems(), fetchUserRelatedData()]);
-    setLoading(false);
+    try {
+      await Promise.all([fetchItems(), fetchUserRelatedData()]);
+    } catch (err) {
+      console.error("Error fetching data:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEnableNotifications = async () => {
@@ -711,8 +716,12 @@ export default function App() {
   };
 
   const handleCheckout = async (shippingDetails: any) => {
-    if (!activeProposal || !currentUser) return;
+    if (!activeProposal || !currentUser) {
+      alert("Devi essere loggato per procedere al pagamento.");
+      return;
+    }
     setLoading(true);
+    console.log("Starting Checkout Simulation...", { activeProposal, shippingDetails });
     try {
       const response = await fetch('/api/transactions', {
         method: 'POST',
@@ -736,10 +745,21 @@ export default function App() {
         throw new Error(error.error || 'Errore durante il checkout');
       }
 
+      console.log("Checkout Success! Redirecting to success page...");
+      
+      // Se l'acquisto deriva da un match (proposta), eliminiamo la ricerca originale e le sue proposte
+      if (activeProposal.request_id && activeProposal.request_id > 0) {
+        console.log("Eliminating associated request and proposals:", activeProposal.request_id);
+        // Eliminiamo prima le proposte associate per evitare errori di vincoli (Foreign Key)
+        await supabase.from('proposals').delete().eq('request_id', activeProposal.request_id);
+        // Poi eliminiamo la ricerca
+        await supabase.from('requests').delete().eq('id', activeProposal.request_id);
+      }
+
       setView('success');
       await fetchData();
     } catch (err: any) {
-      console.error(err);
+      console.error("Checkout Error:", err);
       alert("Errore durante il checkout: " + err.message);
     } finally {
       setLoading(false);
@@ -747,6 +767,11 @@ export default function App() {
   };
 
   const handleShip = async (transactionId: number, trackingInfo: { tracking_id: string, courier: string, seller_iban: string }) => {
+    if (!transactionId) {
+      alert("ID Transazione non trovato.");
+      return;
+    }
+    setLoading(true);
     try {
       const response = await fetch(`/api/transactions/${transactionId}/ship`, {
         method: 'POST',
@@ -754,13 +779,18 @@ export default function App() {
         body: JSON.stringify(trackingInfo)
       });
       
-      if (!response.ok) throw new Error('Errore durante la conferma spedizione');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Errore durante la conferma spedizione');
+      }
 
       alert(t('confirm_shipping_cta') + " OK!");
-      fetchData();
+      await fetchData();
     } catch (err: any) {
-      console.error(err);
+      console.error("SHIPMENT ERROR:", err);
       alert(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1511,6 +1541,26 @@ export default function App() {
                     cap: target.cap.value
                   });
                 }} className="space-y-4 sm:space-y-6">
+                  <div className="flex justify-end">
+                    <button 
+                      type="button" 
+                      onClick={(e) => {
+                        const form = (e.target as HTMLElement).closest('form');
+                        if (form) {
+                          (form.elements.namedItem('name') as HTMLInputElement).value = 'Mario';
+                          (form.elements.namedItem('surname') as HTMLInputElement).value = 'Rossi';
+                          (form.elements.namedItem('email') as HTMLInputElement).value = 'mario.rossi@example.com';
+                          (form.elements.namedItem('phone') as HTMLInputElement).value = '+39 333 1234567';
+                          (form.elements.namedItem('address') as HTMLInputElement).value = 'Via Roma 123';
+                          (form.elements.namedItem('city') as HTMLInputElement).value = 'Milano';
+                          (form.elements.namedItem('cap') as HTMLInputElement).value = '20121';
+                        }
+                      }}
+                      className="text-[10px] font-black uppercase tracking-widest text-brand-start bg-brand-start/10 px-3 py-1.5 rounded-lg hover:bg-brand-start/20 transition-all border border-brand-start/20"
+                    >
+                      ⚡ Simula Dati Demo
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                     <input name="name" required placeholder={t('name')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
                     <input name="surname" required placeholder={t('surname')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
@@ -1522,8 +1572,19 @@ export default function App() {
                     <input name="city" required placeholder={t('city')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
                     <input name="cap" required placeholder={t('cap')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
                   </div>
-                  <button type="submit" className="ios-btn-primary w-full text-base sm:text-lg">
-                    {t('payment_confirm')} (Demo)
+                  <button 
+                    type="submit" 
+                    disabled={loading}
+                    className={`ios-btn-primary w-full text-base sm:text-lg flex items-center justify-center gap-3 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  >
+                    {loading ? (
+                      <>
+                        <RefreshCw className="animate-spin" size={20} />
+                        <span>{t('publishing')}</span>
+                      </>
+                    ) : (
+                      t('payment_confirm') + " (Demo)"
+                    )}
                   </button>
                   <button type="button" onClick={() => requireAuth('dashboard')} className="w-full py-3 text-ios-gray text-sm font-bold hover:text-ios-label transition-colors">
                     {t('cancel')}
@@ -1803,20 +1864,20 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-8">
-                        {transactions.map(t => {
-                          const isSeller = t.seller_id === (currentUser?.id || '');
-                          const deadlineDate = new Date(t.shipping_deadline);
+                        {transactions.map(tr => {
+                          const isSeller = tr.seller_id === (currentUser?.id || '');
+                          const deadlineDate = new Date(tr.shipping_deadline);
                           const now = new Date();
                           const diff = deadlineDate.getTime() - now.getTime();
                           const daysLeft = Math.floor(diff / (1000 * 60 * 60 * 24));
                           const hoursLeft = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                          const isExpired = diff <= 0 && t.status === 'paid';
+                          const isExpired = diff <= 0 && tr.status === 'paid';
 
                           return (
-                            <motion.div key={t.id} layout className="ios-card p-8 group relative overflow-hidden bg-white shadow-xl hover:shadow-2xl transition-all border border-black/[0.02]">
+                            <motion.div key={tr.id} layout className="ios-card p-8 group relative overflow-hidden bg-white shadow-xl hover:shadow-2xl transition-all border border-black/[0.02]">
                               <div className="flex flex-col md:flex-row gap-8">
                                 <div className="w-full md:w-32 h-32 rounded-3xl overflow-hidden shrink-0 shadow-md">
-                                  <img src={t.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                  <img src={tr.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                                 </div>
                                 <div className="flex-1 space-y-6">
                                   <div className="flex justify-between items-start">
@@ -1825,26 +1886,26 @@ export default function App() {
                                         <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${isSeller ? 'bg-ios-blue text-white' : 'bg-brand-start text-white'}`}>
                                           {isSeller ? t('sale') : t('purchase')}
                                         </span>
-                                        <span className="text-ios-gray font-bold text-xs">{t('id')} #{t.id}</span>
+                                        <span className="text-ios-gray font-bold text-xs">{t('id')} #{tr.id}</span>
                                       </div>
-                                      <h4 className="text-2xl font-black tracking-tight">{t.title}</h4>
-                                      <p className="text-brand-start font-black text-xl">{t.price}€</p>
+                                      <h4 className="text-2xl font-black tracking-tight">{tr.title}</h4>
+                                      <p className="text-brand-start font-black text-xl">{tr.price}€</p>
                                     </div>
                                     <div className="text-right">
                                       <div className={`px-4 py-2 rounded-2xl font-black text-xs uppercase tracking-widest ${
-                                        t.status === 'paid' ? 'bg-orange-100 text-orange-600' :
-                                        t.status === 'shipped' ? 'bg-blue-100 text-blue-600' :
-                                        t.status === 'delivered' ? 'bg-green-100 text-green-600' :
+                                        tr.status === 'paid' ? 'bg-orange-100 text-orange-600' :
+                                        tr.status === 'shipped' ? 'bg-blue-100 text-blue-600' :
+                                        tr.status === 'delivered' ? 'bg-green-100 text-green-600' :
                                         'bg-ios-secondary text-ios-gray'
                                       }`}>
-                                        {t.status === 'paid' ? t('to_ship') : t.status === 'shipped' ? t('in_transit') : t.status === 'delivered' ? t('delivered') : t.status}
+                                        {tr.status === 'paid' ? t('to_ship') : tr.status === 'shipped' ? t('in_transit') : tr.status === 'delivered' ? t('delivered') : tr.status}
                                       </div>
                                     </div>
                                   </div>
                                   <div className="p-6 bg-ios-secondary/30 rounded-3xl border border-black/[0.03] space-y-6">
                                     {isSeller ? (
                                       <>
-                                        {t.status === 'paid' && (
+                                        {tr.status === 'paid' && (
                                           <div className="space-y-6">
                                             <div className="flex items-center gap-3 p-4 bg-orange-500/10 text-orange-600 rounded-2xl">
                                               <Clock size={20} className="shrink-0" />
@@ -1860,17 +1921,17 @@ export default function App() {
                                                 <span className="text-[10px] text-orange-500 font-bold">{t('no_phone_notice')}</span>
                                               </div>
                                               <div className="text-sm font-bold leading-relaxed text-ios-label bg-white/50 p-4 rounded-2xl border border-black/[0.02]">
-                                                {t.buyer_name} {t.buyer_surname}<br />
-                                                {t.buyer_address}<br />
-                                                {t.buyer_cap}, {t.buyer_city}<br />
-                                                {t.buyer_email}
+                                                {tr.buyer_name} {tr.buyer_surname}<br />
+                                                {tr.buyer_address}<br />
+                                                {tr.buyer_cap}, {tr.buyer_city}<br />
+                                                {tr.buyer_email}
                                               </div>
                                             </div>
 
                                             <form onSubmit={(e) => {
                                               e.preventDefault();
                                               const formData = new FormData(e.currentTarget);
-                                              handleShip(t.id, {
+                                              handleShip(tr.id, {
                                                 tracking_id: formData.get('tracking') as string,
                                                 courier: formData.get('courier') as string,
                                                 seller_iban: formData.get('iban') as string
@@ -1882,20 +1943,33 @@ export default function App() {
                                                 <label className="text-[10px] font-black uppercase text-ios-gray ml-1">{t('bank_details')}</label>
                                                 <input name="iban" required placeholder={t('iban_placeholder')} className="checkout-input !py-3 !text-sm" />
                                               </div>
-                                              <button type="submit" className="md:col-span-2 ios-btn-primary !py-4 !rounded-2xl shadow-lg shadow-brand-end/20">{t('confirm_shipping_cta')}</button>
+                                              <button 
+                                                type="submit" 
+                                                disabled={loading}
+                                                className={`md:col-span-2 ios-btn-primary !py-4 !rounded-2xl shadow-lg shadow-brand-end/20 flex items-center justify-center gap-3 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                              >
+                                                {loading ? (
+                                                  <>
+                                                    <RefreshCw className="animate-spin" size={20} />
+                                                    <span>{t('saving')}</span>
+                                                  </>
+                                                ) : (
+                                                  t('confirm_shipping_cta')
+                                                )}
+                                              </button>
                                             </form>
                                           </div>
                                         )}
-                                        {t.status === 'shipped' && (
+                                        {tr.status === 'shipped' && (
                                           <div className="space-y-3">
                                             <p className="text-ios-blue font-bold text-sm tracking-tight">{t('waiting_buyer_confirm')}</p>
                                             <div className="p-4 bg-ios-blue/5 rounded-2xl border border-ios-blue/10">
                                               <p className="text-[10px] text-ios-blue font-bold uppercase tracking-widest mb-1">{t('tracking_for_buyer')}</p>
-                                              <p className="text-sm font-black">{t.courier} • {t.tracking_id}</p>
+                                              <p className="text-sm font-black">{tr.courier} • {tr.tracking_id}</p>
                                             </div>
                                           </div>
                                         )}
-                                        {t.status === 'delivered' && (
+                                        {tr.status === 'delivered' && (
                                           <div className="p-5 bg-green-500/10 text-green-600 rounded-2xl border border-green-500/20">
                                             <p className="font-black text-sm uppercase tracking-tight mb-2">Match Completato!</p>
                                             <p className="text-xs font-medium leading-relaxed">{t('payment_processed_in_3_days')}</p>
@@ -1904,7 +1978,7 @@ export default function App() {
                                       </>
                                     ) : (
                                       <>
-                                        {t.status === 'paid' && (
+                                        {tr.status === 'paid' && (
                                           <div className="space-y-4">
                                             <div className="flex items-center gap-3 p-4 bg-ios-blue/10 text-ios-blue rounded-2xl">
                                               <Clock size={20} className="shrink-0" />
@@ -1913,28 +1987,28 @@ export default function App() {
                                             <p className="text-xs text-ios-gray font-medium leading-relaxed">{t('arrival_instructions')}</p>
                                           </div>
                                         )}
-                                        {t.status === 'shipped' && (
+                                        {tr.status === 'shipped' && (
                                           <div className="space-y-6">
                                             <div className="p-4 bg-ios-blue/5 rounded-2xl border border-ios-blue/10">
                                               <p className="text-[10px] text-ios-blue font-bold uppercase tracking-widest mb-1">{t('tracking_code')}</p>
-                                              <p className="text-sm font-black">{t.courier} • {t.tracking_id}</p>
+                                              <p className="text-sm font-black">{tr.courier} • {tr.tracking_id}</p>
                                             </div>
                                             <button
-                                              onClick={() => handleConfirmArrival(t.id)}
+                                              onClick={() => handleConfirmArrival(tr.id)}
                                               className="w-full bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/20 text-white font-black py-4 rounded-2xl transition-all active:scale-95"
                                             >
                                               {t('confirm_receive')}
                                             </button>
                                           </div>
                                         )}
-                                        {t.status === 'delivered' && (
+                                        {tr.status === 'delivered' && (
                                           <div className="space-y-6">
                                             <div className="p-4 bg-green-500/10 text-green-600 rounded-2xl font-black text-sm uppercase text-center border border-green-500/20">
                                               {t('item_arrived')}
                                             </div>
 
                                             <form onSubmit={(e) => {
-                                              setReviewState({...reviewState, transactionId: t.id});
+                                              setReviewState({...reviewState, transactionId: tr.id});
                                               handleSubmitReview(e);
                                             }} className="space-y-4 pt-4 border-t border-black/[0.05]">
                                               <h5 className="text-sm font-black uppercase tracking-widest text-ios-gray">{t('write_review')}</h5>
@@ -1943,7 +2017,7 @@ export default function App() {
                                                   <button
                                                     key={star}
                                                     type="button"
-                                                    onClick={() => setReviewState({...reviewState, rating: star, transactionId: t.id})}
+                                                    onClick={() => setReviewState({...reviewState, rating: star, transactionId: tr.id})}
                                                     className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${reviewState.rating >= star ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-ios-secondary text-ios-gray'}`}
                                                   >
                                                     <Star size={18} fill={reviewState.rating >= star ? 'currentColor' : 'none'} />
@@ -1955,8 +2029,8 @@ export default function App() {
                                                 placeholder={t('placeholder_desc')}
                                                 className="rm-input-lg !py-3 !text-sm resize-none"
                                                 rows={2}
-                                                value={reviewState.transactionId === t.id ? reviewState.comment : ''}
-                                                onChange={(e) => setReviewState({...reviewState, comment: e.target.value, transactionId: t.id})}
+                                                value={reviewState.transactionId === tr.id ? reviewState.comment : ''}
+                                                onChange={(e) => setReviewState({...reviewState, comment: e.target.value, transactionId: tr.id})}
                                               />
                                               <button type="submit" className="ios-btn-primary w-full py-4 text-sm">{t('submit_review')}</button>
                                             </form>
