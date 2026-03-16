@@ -33,6 +33,7 @@ async function initDb() {
         location TEXT,
         category TEXT,
         image_url TEXT,
+        images JSONB DEFAULT '[]'::jsonb,
         status TEXT DEFAULT 'available', -- available, sold, archived
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -109,6 +110,13 @@ async function initDb() {
         buyer_city TEXT,
         buyer_cap TEXT,
         
+        -- Snapshot Data for History
+        title TEXT,
+        price DECIMAL(10,2),
+        category TEXT,
+        image_url TEXT,
+        images JSONB DEFAULT '[]'::jsonb,
+        
         -- Shipping Data
         tracking_id TEXT,
         courier TEXT,
@@ -166,23 +174,28 @@ async function startServer() {
   app.get("/api/items", async (req, res) => {
     try {
       const { q, category } = req.query;
-      let query = "SELECT * FROM items WHERE status = 'available'";
-      const params: any[] = [];
-
+      let query = `
+        SELECT i.*, 
+        (SELECT COUNT(*) FROM favorites f WHERE f.item_id = i.id) as LikeCount
+        FROM items i 
+        WHERE 1=1
+      `;
+      const filterParams: any[] = [];
+      
       if (q) {
-        query += " AND (title ILIKE $1 OR description ILIKE $2)";
-        params.push(`%${q}%`, `%${q}%`);
+        query += " AND (i.title ILIKE $1 OR i.description ILIKE $2)";
+        filterParams.push(`%${q}%`, `%${q}%`);
       }
 
       if (category && category !== 'All' && category !== 'Tutte') {
-        const paramIdx = params.length + 1;
-        query += ` AND category = $${paramIdx}`;
-        params.push(category);
+        const paramIdx = filterParams.length + 1;
+        query += ` AND i.category = $${paramIdx}`;
+        filterParams.push(category);
       }
 
-      query += " ORDER BY created_at DESC";
+      query += " ORDER BY i.created_at DESC";
       
-      const result = await pool.query(query, params);
+      const result = await pool.query(query, filterParams);
       res.json(result.rows);
     } catch (error: any) {
       console.error("Error fetching items:", error);
@@ -192,18 +205,42 @@ async function startServer() {
 
   app.post("/api/items", async (req, res) => {
     try {
-      const { seller_id, title, description, price, location, image_url, category } = req.body;
+      const { seller_id, title, description, price, location, image_url, images, category } = req.body;
       if (!title || !price) {
         return res.status(400).json({ error: "Titolo e prezzo sono obbligatori" });
       }
       const result = await pool.query(
-        "INSERT INTO items (seller_id, title, description, price, location, image_url, category) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
-        [seller_id, title, description, price, location, image_url, category]
+        "INSERT INTO items (seller_id, title, description, price, location, image_url, images, category) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+        [seller_id, title, description, price, location, image_url, JSON.stringify(images || []), category]
       );
       
       res.json({ id: result.rows[0].id });
     } catch (error: any) {
       console.error("Error creating item:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/items/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, description, price, location, image_url, images, category } = req.body;
+      await pool.query(
+        "UPDATE items SET title = $1, description = $2, price = $3, location = $4, image_url = $5, images = $6, category = $7, updated_at = NOW() WHERE id = $8",
+        [title, description, price, location, image_url, JSON.stringify(images || []), category, id]
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/items/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await pool.query("DELETE FROM items WHERE id = $1", [id]);
+      res.json({ success: true });
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
@@ -261,7 +298,7 @@ async function startServer() {
   // Transactions API
   app.post("/api/transactions", async (req, res) => {
     try {
-      const { proposal_id, buyer_id, seller_id, item_id, shipping_details } = req.body;
+      const { proposal_id, buyer_id, seller_id, item_id, title, price, category, image_url, images, shipping_details } = req.body;
       
       // Calculate 5 days deadline
       const deadline = new Date();
@@ -272,14 +309,16 @@ async function startServer() {
           proposal_id, buyer_id, seller_id, item_id, 
           buyer_name, buyer_surname, buyer_email, buyer_phone, 
           buyer_address, buyer_city, buyer_cap, 
-          shipping_deadline, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'paid')
+          shipping_deadline, status,
+          title, price, category, image_url, images
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'paid', $13, $14, $15, $16, $17)
         RETURNING id
       `, [
         proposal_id, buyer_id, seller_id, item_id,
         shipping_details.name, shipping_details.surname, shipping_details.email, shipping_details.phone,
         shipping_details.address, shipping_details.city, shipping_details.cap,
-        deadline
+        deadline,
+        title, price, category, image_url, JSON.stringify(images || [])
       ]);
 
       // Update proposal status
@@ -427,8 +466,8 @@ async function startServer() {
       ];
 
       for (const item of items) {
-        await pool.query("INSERT INTO items (seller_id, title, description, price, location, category, image_url) VALUES ($1, $2, $3, $4, $5, $6, $7)", [
-          item.seller_id, item.title, item.description, item.price, item.location, item.category, item.image_url
+        await pool.query("INSERT INTO items (seller_id, title, description, price, location, category, image_url, images) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", [
+          item.seller_id, item.title, item.description, item.price, item.location, item.category, item.image_url, '[]'
         ]);
       }
 

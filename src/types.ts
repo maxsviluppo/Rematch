@@ -7,9 +7,10 @@ export interface Item {
   location: string;
   image_url: string;
   images?: string[];
-  category?: string;
-  status: 'available' | 'sold';
-  created_at: string;
+  category: string;
+  status?: 'available' | 'sold' | 'archived';
+  likecount?: number;
+  created_at?: string;
 }
 
 export interface Request {
@@ -61,6 +62,7 @@ export interface Transaction {
   price: number;
   image_url: string;
   images?: string[];
+  category?: string;
   created_at: string;
   updated_at: string;
 }

@@ -46,7 +46,9 @@ import {
   LogOut,
   Trash2,
   SlidersHorizontal,
-  MessageCircle
+  MessageCircle,
+  Eye,
+  Truck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Item, Request, Proposal, Transaction } from './types';
@@ -140,6 +142,9 @@ export default function App() {
 
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isTermsAccepted, setIsTermsAccepted] = useState(false);
+  const [isEditingItem, setIsEditingItem] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [isZoomed, setIsZoomed] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -156,12 +161,12 @@ export default function App() {
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
-      
+
       // Fine-tuned conditions:
       // 1. If at very top (<= 5px), always show
       if (currentScrollY <= 5) {
         setShowHeader(true);
-      } 
+      }
       // 2. If scrolling down AND passed a minimum threshold (100px)
       else if (currentScrollY > lastScrollY && currentScrollY > 100) {
         setShowHeader(false);
@@ -170,7 +175,7 @@ export default function App() {
       else if (currentScrollY < lastScrollY) {
         setShowHeader(true);
       }
-      
+
       setLastScrollY(currentScrollY);
     };
 
@@ -208,7 +213,7 @@ export default function App() {
         .select('nome')
         .eq('id', userId)
         .single();
-      
+
       setCurrentUser({
         id: userId,
         nome: data?.nome || 'Utente'
@@ -225,13 +230,13 @@ export default function App() {
     let interval: any;
     if (currentUser) {
       notificationService.init(currentUser.id);
-      
+
       // Auto-refresh match ogni 60 secondi come richiesto
       interval = setInterval(() => {
         runMatching().then(() => fetchData());
       }, 60000);
     }
-    
+
     if ("Notification" in window) {
       setNotificationsEnabled(Notification.permission === "granted");
     }
@@ -285,7 +290,7 @@ export default function App() {
     if (files && files.length > 0) {
       const remainingSlots = 3 - imagePreviews.length;
       const filesToProcess = Array.from(files).slice(0, remainingSlots);
-      
+
       filesToProcess.forEach(file => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -331,16 +336,16 @@ export default function App() {
       let filteredItems = allItems || [];
       if (searchQuery || (!selectedCategories.includes('Tutte') && selectedCategories.length > 0) || maxPriceFilter < 5000) {
         filteredItems = filteredItems.filter(item => {
-          const matchesSearch = !searchQuery || 
-            item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+          const matchesSearch = !searchQuery ||
+            item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.description.toLowerCase().includes(searchQuery.toLowerCase());
-          
-          const matchesCategory = selectedCategories.includes('Tutte') || 
-                                 selectedCategories.length === 0 || 
+
+          const matchesCategory = selectedCategories.includes('Tutte') ||
+                                 selectedCategories.length === 0 ||
                                  selectedCategories.includes(item.category);
-                                 
+
           const matchesPrice = item.price <= maxPriceFilter;
-                                 
+
           return matchesSearch && matchesCategory && matchesPrice;
         });
       }
@@ -352,7 +357,7 @@ export default function App() {
         .select('*')
         .eq('buyer_id', (currentUser?.id || ''))
         .eq('status', 'active');
-      
+
       if (reqsError) throw reqsError;
       setUserRequests(userReqs || []);
 
@@ -362,7 +367,7 @@ export default function App() {
         .eq('status', 'pending');
 
       if (propError) throw propError;
-      
+
       // Filter proposals where the request belongs to (currentUser?.id || '')
       const filteredProposals = (userProposals || []).filter(p => {
         const req = userReqs?.find(r => r.id === p.request_id);
@@ -395,7 +400,7 @@ export default function App() {
         .from('favorites')
         .select('item_id, items(*)')
         .eq('user_id', (currentUser?.id || ''));
-      
+
       if (favError) throw favError;
       setFavorites((favs || []).map(f => f.items));
 
@@ -424,6 +429,8 @@ export default function App() {
       let matchesCreated = 0;
       for (const req of requests) {
         for (const item of items) {
+          // Skip if the item belongs to the same user who made the request
+          if (item.seller_id === req.buyer_id) continue;
           const query = req.query.toLowerCase();
           const title = item.title.toLowerCase();
           const desc = item.description.toLowerCase();
@@ -431,12 +438,12 @@ export default function App() {
           if (title.includes(query) || desc.includes(query)) {
             if ((req.min_price === 0 || item.price >= req.min_price) &&
                 (req.max_price === 0 || item.price <= req.max_price)) {
-              
+
               const exists = existingProposals?.find((p: any) => p.request_id === req.id && p.item_id === item.id);
               if (!exists) {
                 const expiresAt = new Date();
                 expiresAt.setHours(expiresAt.getHours() + 24);
-                
+
                 await supabase.from('proposals').insert({
                   request_id: req.id,
                   item_id: item.id,
@@ -465,34 +472,61 @@ export default function App() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.from('items').insert({
-        title: newItem.title,
-        description: newItem.description,
-        price: parseFloat(newItem.price),
-        location: newItem.location,
-        category: newItem.category,
-        image_url: imagePreviews[0] || newItem.image_url,
-        images: imagePreviews.length > 0 ? imagePreviews : [newItem.image_url],
-        seller_id: (currentUser?.id || ''),
-        status: 'available'
-      });
+      if (isEditingItem && editingId) {
+        const { error } = await supabase.from('items').update({
+          title: newItem.title,
+          description: newItem.description,
+          price: parseFloat(newItem.price),
+          location: newItem.location,
+          category: newItem.category,
+          image_url: imagePreviews[0] || newItem.image_url,
+          images: imagePreviews.length > 0 ? imagePreviews : [newItem.image_url],
+          updated_at: new Date().toISOString()
+        }).eq('id', editingId);
+        if (error) throw error;
+        alert("Annuncio aggiornato con successo!");
+      } else {
+        const { error } = await supabase.from('items').insert({
+          title: newItem.title,
+          description: newItem.description,
+          price: parseFloat(newItem.price),
+          location: newItem.location,
+          category: newItem.category,
+          image_url: imagePreviews[0] || newItem.image_url,
+          images: imagePreviews.length > 0 ? imagePreviews : [newItem.image_url],
+          seller_id: (currentUser?.id || ''),
+          status: 'available'
+        });
+        if (error) throw error;
+        await runMatching();
+        alert("Annuncio pubblicato con successo!");
+      }
 
-      if (error) throw error;
-      
-      await runMatching();
-      
-      alert("Annuncio pubblicato con successo!");
       requireAuth('dashboard');
       setNewItem({ title: '', description: '', price: '', location: '', category: 'Altro', image_url: 'https://picsum.photos/seed/item/400/300', images: [] });
       setImagePreviews([]);
+      setIsEditingItem(false);
+      setEditingId(null);
       await fetchData();
     } catch (err: any) {
       console.error(err);
-      if (err.code === 'PGRST205') {
-        alert("Errore: Tabella 'items' non trovata nel database. Assicurati che il server sia avviato o crea la tabella su Supabase.");
-      } else {
-        alert("Errore durante la pubblicazione: " + (err.message || "Errore sconosciuto"));
-      }
+      alert("Errore: " + (err.message || "Errore sconosciuto"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteItem = async (itemId: number) => {
+    if (!window.confirm("Sei sicuro di voler eliminare definitivamente questo annuncio? Questa azione è irreversibile.")) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.from('items').delete().eq('id', itemId);
+      if (error) throw error;
+      alert("Annuncio eliminato definitivamente.");
+      setSelectedItem(null);
+      await fetchData();
+    } catch (err: any) {
+      alert("Errore durante l'eliminazione: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -512,7 +546,7 @@ export default function App() {
       });
 
       if (error) throw error;
-      
+
       await runMatching();
       requireAuth('dashboard');
       setNewRequest({ query: '', min_price: '', max_price: '', location: '' });
@@ -549,7 +583,7 @@ export default function App() {
         .eq('user_id', (currentUser?.id || ''))
         .eq('item_id', itemId)
         .single();
-      
+
       if (existing) {
         await supabase.from('favorites').delete().eq('id', existing.id);
       } else {
@@ -595,7 +629,8 @@ export default function App() {
         title: activeProposal.title,
         price: activeProposal.price,
         image_url: activeProposal.image_url,
-        images: activeProposal.images
+        images: activeProposal.images,
+        category: activeProposal.category
       }).select().single();
 
       if (txError) throw txError;
@@ -625,7 +660,7 @@ export default function App() {
       }).eq('id', transactionId);
 
       if (error) throw error;
-      
+
       alert(t('confirm_shipping_cta') + " OK!");
       fetchData();
     } catch (err) {
@@ -641,7 +676,7 @@ export default function App() {
       }).eq('id', transactionId);
 
       if (error) throw error;
-      
+
       alert(t('item_arrived'));
       fetchData();
     } catch (err) {
@@ -652,7 +687,7 @@ export default function App() {
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reviewState.transactionId) return;
-    
+
     try {
       const { error } = await supabase.from('transactions').update({
         review_rating: reviewState.rating,
@@ -697,7 +732,7 @@ export default function App() {
   return (
     <div className="min-h-screen font-sans pb-28 md:pb-0">
       {/* Top Header */}
-      <motion.nav 
+      <motion.nav
         initial={{ y: 0 }}
         animate={{ y: showHeader ? 0 : -100 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
@@ -707,7 +742,7 @@ export default function App() {
           <div className="flex items-center cursor-pointer h-10" onClick={() => goTo('home')}>
             <img src="/logo.png" alt="ReMatch Logo" className="h-full w-auto object-contain hover:opacity-80 transition-opacity" />
           </div>
-          
+
           <div className="hidden md:flex items-center gap-1">
             {(['home','vetrina'] as const).map(v => (
               <button key={v} onClick={() => goTo(v)} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all duration-200 active:scale-95 capitalize ${view === v ? 'text-brand-end bg-brand-end/15' : 'text-white/60 hover:text-white hover:bg-white/8'}`}>
@@ -721,10 +756,10 @@ export default function App() {
             {session && (
               <span className="hidden sm:block text-xs font-semibold text-white/50 max-w-[120px] truncate">{currentUser?.nome}</span>
             )}
-            
+
             {/* Language Switcher */}
             <div className="relative p-1">
-              <button 
+              <button
                 onClick={() => setShowLangMenu(!showLangMenu)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 hover:bg-white/10 rounded-full border border-white/10 transition-all active:scale-95"
               >
@@ -736,15 +771,15 @@ export default function App() {
                   {currentLang === 'de' && '🇩🇪'}
                 </span>
               </button>
-              
+
               <AnimatePresence>
                 {showLangMenu && (
                   <>
-                    <div 
-                      className="fixed inset-0 z-[90]" 
+                    <div
+                      className="fixed inset-0 z-[90]"
                       onClick={() => setShowLangMenu(false)}
                     />
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, scale: 0.95, y: 10 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -781,7 +816,7 @@ export default function App() {
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-[#1c1c1e]"></span>
               )}
             </button>
-            <button 
+            <button
               onClick={() => {
                 if (session) {
                   setShowLogoutConfirm(true);
@@ -855,7 +890,7 @@ export default function App() {
         )}
         <AnimatePresence mode="wait">
           {view === 'home' && (
-            <motion.div 
+            <motion.div
               key="home"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -898,8 +933,8 @@ export default function App() {
                 <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex-1 relative group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-ios-gray/60 group-focus-within:text-brand-end transition-colors duration-200" size={18} />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder={t('search_placeholder')}
                       className="w-full pl-11 pr-4 py-3.5 bg-ios-secondary rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-end/30 transition-all text-base font-semibold placeholder:text-ios-gray/50"
                       value={searchQuery}
@@ -925,27 +960,27 @@ export default function App() {
                     {t('see_all')} <ChevronRight size={15} />
                   </button>
                 </div>
-                
+
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                   {items.slice(0, 12).map((item) => {
                     const isFav = favorites.some(f => f.id === item.id);
                     return (
-                      <motion.div 
+                      <motion.div
                         layout
                         whileHover={{ y: -4 }}
                         whileTap={{ scale: 0.98 }}
-                        key={item.id} 
+                        key={item.id}
                         onClick={() => setSelectedItem(item)}
                         className="ios-card ios-card-hover group cursor-pointer"
                       >
                         <div className="aspect-square overflow-hidden relative">
-                          <img 
-                            src={item.image_url} 
-                            alt={item.title} 
+                          <img
+                            src={item.image_url}
+                            alt={item.title}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                             referrerPolicy="no-referrer"
                           />
-                          <button 
+                          <button
                             onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
                             className={`absolute top-2.5 right-2.5 p-2 rounded-full backdrop-blur-xl shadow-md transition-colors ${isFav ? 'bg-red-500 text-white' : 'bg-white/80 text-ios-gray hover:text-red-500'}`}
                           >
@@ -973,12 +1008,12 @@ export default function App() {
                 {/* Decorative Pattern */}
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl group-hover:bg-white/10 transition-colors duration-700" />
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-black/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
-                
+
                 <div className="relative z-10 flex flex-col items-center text-center space-y-6 max-w-2xl mx-auto">
                   <div className="w-20 h-20 bg-white/20 backdrop-blur-xl rounded-3xl flex items-center justify-center shadow-2xl transform group-hover:scale-110 group-hover:rotate-6 transition-all duration-500">
                     <Share2 className="text-white" size={36} />
                   </div>
-                  
+
                   <div className="space-y-3">
                     <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
                       {t('share_title')}
@@ -987,8 +1022,8 @@ export default function App() {
                       {t('share_desc')}
                     </p>
                   </div>
-                  
-                  <button 
+
+                  <button
                     onClick={() => {
                       if (navigator.share) {
                         navigator.share({
@@ -1012,7 +1047,7 @@ export default function App() {
           )}
 
           {view === 'sell' && (
-            <motion.div 
+            <motion.div
               key="sell"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1025,19 +1060,19 @@ export default function App() {
                   <h2>{t('sell_title')}</h2>
                   <p>{t('sell_desc')}</p>
                 </div>
-                
+
                 <form onSubmit={handleSell} className="space-y-5 sm:space-y-6">
                   <div className="space-y-3 sm:space-y-4">
                     <div className="flex items-center justify-between">
                       <label className="rm-label">{t('item_photos')}</label>
                       <span className="text-ios-gray text-[10px] font-black uppercase tracking-widest">{imagePreviews.length}/3 {t('photos_count')}</span>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                       {imagePreviews.map((img, idx) => (
                         <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden shadow-md group">
                           <img src={img} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
-                          <button 
+                          <button
                             type="button"
                             onClick={() => removeImage(idx)}
                             className="absolute top-2 right-2 p-2 bg-black/50 backdrop-blur-xl text-white rounded-lg hover:bg-black/70 transition-all opacity-0 group-hover:opacity-100"
@@ -1051,19 +1086,19 @@ export default function App() {
                           )}
                         </div>
                       ))}
-                      
+
                       {imagePreviews.length < 3 && (
                         <label className="aspect-square bg-ios-secondary rounded-2xl border-2 border-dashed border-ios-gray/20 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-ios-secondary/80 transition-all group overflow-hidden">
                           <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-brand-end shadow-md group-hover:scale-105 transition-transform duration-300">
                             <Plus size={20} />
                           </div>
                           <p className="text-ios-gray text-[10px] font-black uppercase tracking-wider">{t('add')}</p>
-                          <input 
-                            type="file" 
-                            accept="image/*" 
+                          <input
+                            type="file"
+                            accept="image/*"
                             capture="environment"
                             multiple
-                            className="hidden" 
+                            className="hidden"
                             onChange={handleImageChange}
                           />
                         </label>
@@ -1073,19 +1108,19 @@ export default function App() {
 
                   <div className="space-y-3 sm:space-y-4">
                     <label className="rm-label">{t('title')}</label>
-                    <input 
+                    <input
                       required
-                      type="text" 
+                      type="text"
                       placeholder={t('placeholder_title')}
                       className="rm-input-lg"
                       value={newItem.title}
                       onChange={e => setNewItem({...newItem, title: e.target.value})}
                     />
                   </div>
-                  
+
                   <div className="space-y-3 sm:space-y-4">
                     <label className="text-sm font-black text-ios-gray ml-2 uppercase tracking-[0.2em]">{t('description')}</label>
-                    <textarea 
+                    <textarea
                       required
                       rows={4}
                       placeholder={t('placeholder_desc')}
@@ -1098,7 +1133,7 @@ export default function App() {
                   <div className="space-y-3 sm:space-y-4">
                     <label className="rm-label">{t('category')}</label>
                     <div className="relative">
-                      <select 
+                      <select
                         required
                         className="rm-input-lg appearance-none cursor-pointer w-full text-ios-label"
                         value={newItem.category}
@@ -1118,9 +1153,9 @@ export default function App() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                     <div className="space-y-3 sm:space-y-4">
                       <label className="rm-label">{t('price')} (€)</label>
-                      <input 
+                      <input
                         required
-                        type="number" 
+                        type="number"
                         placeholder="0.00"
                         className="rm-input-lg"
                         value={newItem.price}
@@ -1130,7 +1165,7 @@ export default function App() {
                     <div className="space-y-3 sm:space-y-4">
                       <label className="rm-label">{t('location')}</label>
                       <div className="relative">
-                        <select 
+                        <select
                           required
                           className="rm-input-lg appearance-none cursor-pointer w-full"
                           value={newItem.location}
@@ -1158,20 +1193,43 @@ export default function App() {
                     </div>
                   </div>
 
-                  <button 
-                    disabled={loading}
+                  <button
                     type="submit"
-                    className="ios-btn-primary w-full text-lg"
+                    disabled={loading}
+                    className="w-full mt-8 py-5 sm:py-6 bg-brand-end text-white text-base sm:text-lg font-black rounded-2xl sm:rounded-3xl hover:bg-black transition-all active:scale-[0.98] shadow-2xl shadow-brand-end/30 disabled:opacity-50 flex items-center justify-center gap-3"
                   >
-                    {loading ? t('publishing') : t('put_in_sale')}
+                    {loading ? (
+                      <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Check size={24} />
+                        <span>{isEditingItem ? "Aggiorna Annuncio" : t('put_in_sale')}</span>
+                      </>
+                    )}
                   </button>
+
+                  {isEditingItem && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingItem(false);
+                        setEditingId(null);
+                        setNewItem({ title: '', description: '', price: '', location: '', category: 'Altro', image_url: '', images: [] });
+                        setImagePreviews([]);
+                        setView('dashboard');
+                      }}
+                      className="w-full mt-3 py-4 text-ios-gray font-bold text-sm"
+                    >
+                      Annulla Modifica
+                    </button>
+                  )}
                 </form>
               </div>
             </motion.div>
           )}
 
           {view === 'buy' && (
-            <motion.div 
+            <motion.div
               key="buy"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1184,25 +1242,25 @@ export default function App() {
                   <h2>{t('buy_title')}</h2>
                   <p>{t('buy_desc')}</p>
                 </div>
-                
+
                 <form onSubmit={handleBuy} className="space-y-5 sm:space-y-6">
                   <div className="space-y-3 sm:space-y-4">
                     <label className="rm-label">{t('what_looking_for')}</label>
-                    <input 
+                    <input
                       required
-                      type="text" 
+                      type="text"
                       placeholder={t('placeholder_buy_title')}
                       className="rm-input-lg"
                       value={newRequest.query}
                       onChange={e => setNewRequest({...newRequest, query: e.target.value})}
                     />
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
                     <div className="space-y-3 sm:space-y-4">
                       <label className="rm-label">{t('max_price_label')}</label>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         placeholder={t('no_limit')}
                         className="rm-input-lg"
                         value={newRequest.max_price}
@@ -1213,7 +1271,7 @@ export default function App() {
                     <div className="space-y-3 sm:space-y-4">
                       <label className="rm-label">{t('where')}</label>
                       <div className="relative">
-                        <select 
+                        <select
                           required
                           className="rm-input-lg appearance-none cursor-pointer w-full"
                           value={newRequest.location}
@@ -1241,7 +1299,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <button 
+                  <button
                     disabled={loading}
                     type="submit"
                     className="ios-btn-primary w-full text-lg"
@@ -1254,7 +1312,7 @@ export default function App() {
           )}
 
           {view === 'checkout' && activeProposal && (
-            <motion.div 
+            <motion.div
               key="checkout"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1311,7 +1369,7 @@ export default function App() {
           )}
 
           {view === 'dashboard' && (
-            <motion.div 
+            <motion.div
               key="dashboard"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1329,7 +1387,7 @@ export default function App() {
                 </div>
                 <div className="flex flex-wrap gap-3 sm:gap-4 w-full sm:w-auto">
                   {!notificationsEnabled && (
-                    <button 
+                    <button
                       onClick={handleEnableNotifications}
                       className="flex-1 sm:flex-none px-6 sm:px-8 py-3.5 sm:py-4 bg-ios-blue/10 text-ios-blue font-black rounded-xl sm:rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 sm:gap-3 hover:bg-ios-blue/20 transition-all active:scale-95 shadow-lg shadow-ios-blue/5"
                     >
@@ -1389,78 +1447,7 @@ export default function App() {
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-12">
-                  {/* 3. Suggested Matches */}
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">{t('suggested_matches')}</h3>
-                      <span className="px-3 py-1 bg-ios-blue text-white text-[10px] font-bold rounded-full">
-                        {proposals.length} {t('new_notif')}
-                      </span>
-                    </div>
-                    
-                    {proposals.length === 0 ? (
-                      <div className="ios-card p-16 flex flex-col items-center justify-center text-center space-y-4">
-                        <div className="w-16 h-16 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
-                          <ShoppingBag size={32} />
-                        </div>
-                        <div className="space-y-1">
-                          <p className="font-bold">{t('no_matches')}</p>
-                          <p className="text-ios-gray text-sm max-w-xs">{t('no_matches_desc')}</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {proposals.map((prop) => (
-                          <motion.div 
-                            layout
-                            key={prop.proposal_id} 
-                            className="ios-card p-6 flex flex-col sm:flex-row gap-6 group"
-                          >
-                            <div className="w-full sm:w-40 h-40 rounded-2xl overflow-hidden flex-shrink-0 relative">
-                              <img src={prop.image_url} alt={prop.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" referrerPolicy="no-referrer" />
-                              <div className="absolute top-3 left-3 px-2 py-1 bg-green-500 text-white text-[10px] font-bold rounded-full shadow-sm">
-                                98% Match
-                              </div>
-                              <div className="absolute bottom-3 right-3 px-3 py-1 bg-brand-end text-white text-xs font-black rounded-xl shadow-lg">
-                                €{prop.price}
-                              </div>
-                            </div>
-                            <div className="flex-1 flex flex-col justify-between py-1">
-                              <div className="space-y-3">
-                                <div className="flex justify-between items-start">
-                                  <h4 className="text-xl font-bold">{prop.title}</h4>
-                                </div>
-                                <p className="text-ios-gray text-sm line-clamp-2 leading-relaxed">{prop.description}</p>
-                                <div className="flex items-center gap-4 text-xs font-medium text-ios-gray">
-                                  <div className="flex items-center gap-1.5">
-                                    <MapPin size={14} />
-                                    <span>{prop.location}</span>
-                                  </div>
-                                </div>
-                              </div>
-                              
-                              <div className="flex gap-3 mt-6">
-                                <button 
-                                  onClick={() => respondToProposal(prop, 'accepted')}
-                                  className="flex-1 ios-btn-primary py-3 text-sm shadow-none"
-                                >
-                                  {t('accept')}
-                                </button>
-                                <button 
-                                  onClick={() => respondToProposal(prop, 'rejected')}
-                                  className="px-6 py-3 bg-ios-secondary text-ios-gray font-semibold rounded-2xl text-sm hover:bg-ios-gray/10 hover:text-ios-label active:scale-95 transition-all"
-                                >
-                                  {t('reject')}
-                                </button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 4. My Searches */}
+                  {/* 3. My Searches (Moved here) */}
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
                       <h3 className="rm-section-title">{t('my_searches')}</h3>
@@ -1490,7 +1477,7 @@ export default function App() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1">
-                              <button 
+                              <button
                                 onClick={() => {
                                   setNewRequest({
                                     query: req.query,
@@ -1506,7 +1493,7 @@ export default function App() {
                               >
                                 <RefreshCw size={18} />
                               </button>
-                              <button 
+                              <button
                                 onClick={() => deleteRequest(req.id)}
                                 className="p-2 text-ios-gray hover:text-red-500 transition-colors"
                               >
@@ -1514,6 +1501,120 @@ export default function App() {
                               </button>
                             </div>
                           </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 4. Suggested Matches (Moved here) */}
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="rm-section-title">{t('suggested_matches')}</h3>
+                      <span className="px-3 py-1 bg-ios-blue text-white text-[10px] font-bold rounded-full">
+                        {proposals.length} {t('new_notif')}
+                      </span>
+                    </div>
+
+                    {proposals.length === 0 ? (
+                      <div className="ios-card p-16 flex flex-col items-center justify-center text-center space-y-4">
+                        <div className="w-16 h-16 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
+                          <ShoppingBag size={32} />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="font-bold">{t('no_matches')}</p>
+                          <p className="text-ios-gray text-sm max-w-xs">{t('no_matches_desc')}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {proposals.map((prop) => (
+                          <motion.div
+                            layout
+                            key={prop.proposal_id}
+                            className="ios-card p-6 flex flex-col sm:flex-row gap-6 group"
+                          >
+                            <div className="w-full sm:w-40 h-40 rounded-2xl overflow-hidden flex-shrink-0 relative">
+                              <img src={prop.image_url} alt={prop.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" referrerPolicy="no-referrer" />
+                              <div className="absolute top-3 left-3 px-2 py-1 bg-green-500 text-white text-[10px] font-bold rounded-full shadow-sm">
+                                98% Match
+                              </div>
+                              <div className="absolute bottom-3 right-3 px-3 py-1 bg-brand-end text-white text-xs font-black rounded-xl shadow-lg">
+                                €{prop.price}
+                              </div>
+                            </div>
+                            <div className="flex-1 flex flex-col justify-between py-1">
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-start">
+                                  <h4 className="text-xl font-bold">{prop.title}</h4>
+                                </div>
+                                <p className="text-ios-gray text-sm line-clamp-2 leading-relaxed">{prop.description}</p>
+                                <div className="flex items-center gap-4 text-xs font-medium text-ios-gray">
+                                  <div className="flex items-center gap-1.5">
+                                    <MapPin size={14} />
+                                    <span>{prop.location}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex gap-3 mt-6">
+                                <button
+                                  onClick={() => respondToProposal(prop, 'accepted')}
+                                  className="flex-1 ios-btn-primary py-3 text-sm shadow-none"
+                                >
+                                  {t('accept')}
+                                </button>
+                                <button
+                                  onClick={() => respondToProposal(prop, 'rejected')}
+                                  className="px-6 py-3 bg-ios-secondary text-ios-gray font-semibold rounded-2xl text-sm hover:bg-ios-gray/10 hover:text-ios-label active:scale-95 transition-all"
+                                >
+                                  {t('reject')}
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 5. Items in Sale (New Section) */}
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="rm-section-title">{t('in_sale')}</h3>
+                      <span className="text-ios-gray text-xs font-medium">
+                        {items.filter(i => i.seller_id === (currentUser?.id || '')).length} {t('items_count')}
+                      </span>
+                    </div>
+
+                    {items.filter(i => i.seller_id === (currentUser?.id || '')).length === 0 ? (
+                      <div className="ios-card p-12 border-2 border-dashed border-ios-gray/10 flex flex-col items-center justify-center text-center space-y-3">
+                        <div className="w-12 h-12 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
+                          <Package size={24} />
+                        </div>
+                        <p className="text-ios-gray text-sm">{t('no_saved_items')}</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        {items.filter(i => i.seller_id === (currentUser?.id || '')).map((item) => (
+                          <motion.div
+                            layout
+                            key={item.id}
+                            onClick={() => setSelectedItem(item)}
+                            className="ios-card group cursor-pointer relative"
+                          >
+                            <div className="aspect-square overflow-hidden relative">
+                              <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
+                              <div className="absolute top-2 right-2 px-2 py-0.5 bg-green-500 text-white rounded-lg text-[10px] font-black shadow-sm">
+                                Live
+                              </div>
+                              <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-white/95 backdrop-blur-sm rounded-lg text-[10px] font-black shadow-sm">
+                                €{item.price}
+                              </div>
+                            </div>
+                            <div className="p-3">
+                              <h4 className="font-bold text-xs truncate">{item.title}</h4>
+                            </div>
+                          </motion.div>
                         ))}
                       </div>
                     )}
@@ -1566,7 +1667,7 @@ export default function App() {
                                     </div>
                                     <div className="text-right">
                                       <div className={`px-4 py-2 rounded-2xl font-black text-xs uppercase tracking-widest ${
-                                        t.status === 'paid' ? 'bg-orange-100 text-orange-600' : 
+                                        t.status === 'paid' ? 'bg-orange-100 text-orange-600' :
                                         t.status === 'shipped' ? 'bg-blue-100 text-blue-600' :
                                         t.status === 'delivered' ? 'bg-green-100 text-green-600' :
                                         'bg-ios-secondary text-ios-gray'
@@ -1653,8 +1754,8 @@ export default function App() {
                                               <p className="text-[10px] text-ios-blue font-bold uppercase tracking-widest mb-1">{t('tracking_code')}</p>
                                               <p className="text-sm font-black">{t.courier} • {t.tracking_id}</p>
                                             </div>
-                                            <button 
-                                              onClick={() => handleConfirmArrival(t.id)} 
+                                            <button
+                                              onClick={() => handleConfirmArrival(t.id)}
                                               className="w-full bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/20 text-white font-black py-4 rounded-2xl transition-all active:scale-95"
                                             >
                                               {t('confirm_receive')}
@@ -1666,7 +1767,7 @@ export default function App() {
                                             <div className="p-4 bg-green-500/10 text-green-600 rounded-2xl font-black text-sm uppercase text-center border border-green-500/20">
                                               {t('item_arrived')}
                                             </div>
-                                            
+
                                             <form onSubmit={(e) => {
                                               setReviewState({...reviewState, transactionId: t.id});
                                               handleSubmitReview(e);
@@ -1674,7 +1775,7 @@ export default function App() {
                                               <h5 className="text-sm font-black uppercase tracking-widest text-ios-gray">{t('write_review')}</h5>
                                               <div className="flex gap-2">
                                                 {[1, 2, 3, 4, 5].map(star => (
-                                                  <button 
+                                                  <button
                                                     key={star}
                                                     type="button"
                                                     onClick={() => setReviewState({...reviewState, rating: star, transactionId: t.id})}
@@ -1684,7 +1785,7 @@ export default function App() {
                                                   </button>
                                                 ))}
                                               </div>
-                                              <textarea 
+                                              <textarea
                                                 required
                                                 placeholder={t('placeholder_desc')}
                                                 className="rm-input-lg !py-3 !text-sm resize-none"
@@ -1725,9 +1826,9 @@ export default function App() {
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                         {favorites.map((item) => (
-                          <motion.div 
-                            layout 
-                            key={item.id} 
+                          <motion.div
+                            layout
+                            key={item.id}
                             onClick={() => setSelectedItem(item)}
                             className="ios-card group cursor-pointer relative"
                           >
@@ -1749,14 +1850,14 @@ export default function App() {
 
                   {/* 7. Final - Logout and Delete */}
                   <div className="pt-12 flex flex-col sm:flex-row gap-4">
-                    <button 
+                    <button
                       onClick={() => setShowLogoutConfirm(true)}
                       className="flex-1 py-5 rounded-3xl bg-gradient-to-r from-ios-secondary to-ios-secondary/50 text-ios-gray font-black uppercase tracking-widest text-sm hover:from-ios-secondary/80 hover:to-ios-secondary transition-all active:scale-[0.98] border border-black/5 flex items-center justify-center gap-3 shadow-sm"
                     >
                       <LogOut size={20} />
                       {t('logout_cta')}
                     </button>
-                    <button 
+                    <button
                       onClick={() => setShowDeleteConfirm(true)}
                       className="flex-1 py-5 rounded-3xl bg-gradient-to-r from-red-500 to-red-600 text-white font-black uppercase tracking-widest text-sm hover:from-red-600 hover:to-red-700 shadow-xl shadow-red-500/20 active:scale-[0.98] flex items-center justify-center gap-3"
                     >
@@ -1789,14 +1890,14 @@ export default function App() {
           )}
 
           {view === 'vetrina' && (
-            <motion.div 
+            <motion.div
               key="vetrina"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               className="space-y-8"
             >
-              <motion.div 
+              <motion.div
                 animate={{ y: showHeader ? 0 : -300 }}
                 transition={{ duration: 0.3, ease: 'easeInOut' }}
                 className="sticky top-0 md:top-20 z-40 bg-white/95 backdrop-blur-2xl -mx-6 px-6 py-4 flex flex-col gap-4 border-b border-black/[0.05] shadow-sm"
@@ -1804,7 +1905,7 @@ export default function App() {
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
-                       <button 
+                       <button
                         onClick={() => requireAuth('sell')}
                         className="w-8 h-8 flex items-center justify-center bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl shadow-lg shadow-orange-500/20 active:scale-90 transition-all flex-shrink-0"
                       >
@@ -1822,7 +1923,7 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1 group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-ios-gray group-focus-within:text-brand-end transition-colors" size={18} />
-                    <input 
+                    <input
                       type="text"
                       placeholder={t('search_placeholder')}
                       value={searchQuery}
@@ -1830,17 +1931,17 @@ export default function App() {
                       className="w-full pl-12 pr-4 py-3.5 bg-black/[0.04] focus:bg-white border-2 border-transparent focus:border-brand-end/20 rounded-2xl text-sm font-bold placeholder:text-ios-gray/50 transition-all outline-none"
                     />
                   </div>
-                  <button 
+                  <button
                     onClick={() => setShowFilters(!showFilters)}
                     className={`p-3.5 rounded-2xl border-2 transition-all flex items-center justify-center ${showFilters ? 'bg-brand-end border-brand-end text-white shadow-lg' : 'bg-black/[0.04] border-transparent text-ios-gray'}`}
                   >
                     <SlidersHorizontal size={20} />
                   </button>
                 </div>
-                
+
                 <AnimatePresence>
                   {showFilters && (
-                    <motion.div 
+                    <motion.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
@@ -1861,8 +1962,8 @@ export default function App() {
                               }
                             }}
                             className={`px-4 py-2 rounded-xl text-[11px] font-black whitespace-nowrap transition-all duration-300 border ${
-                              selectedCategories.includes(cat) 
-                                ? 'bg-brand-end border-brand-end text-white shadow-md' 
+                              selectedCategories.includes(cat)
+                                ? 'bg-brand-end border-brand-end text-white shadow-md'
                                 : 'bg-white border-black/[0.1] text-ios-gray hover:border-brand-end/30'
                             }`}
                           >
@@ -1870,18 +1971,18 @@ export default function App() {
                           </button>
                         ))}
                       </div>
-                      
+
                       <div className="bg-black/[0.03] p-4 rounded-2xl border border-black/[0.03]">
                         <div className="flex justify-between items-center mb-3">
                           <span className="text-[10px] font-black uppercase tracking-widest text-ios-gray">{t('max_price_label')}</span>
                           <span className="text-base font-black text-brand-end">€{maxPriceFilter === 5000 ? t('no_limit') : maxPriceFilter}</span>
                         </div>
-                        <input 
-                          type="range" 
-                          min="0" 
-                          max="5000" 
+                        <input
+                          type="range"
+                          min="0"
+                          max="5000"
                           step="50"
-                          value={maxPriceFilter} 
+                          value={maxPriceFilter}
                           onChange={(e) => setMaxPriceFilter(parseInt(e.target.value))}
                           className="w-full accent-brand-end h-1.5 bg-black/10 rounded-lg appearance-none cursor-pointer"
                         />
@@ -1901,16 +2002,16 @@ export default function App() {
                   items.map((item) => {
                     const isFav = favorites.some(f => f.id === item.id);
                     return (
-                      <motion.div 
+                      <motion.div
                         layout
                         whileHover={{ y: -8 }}
-                        key={item.id} 
+                        key={item.id}
                         onClick={() => setSelectedItem(item)}
                         className="ios-card ios-card-hover group cursor-pointer"
                       >
                         <div className="aspect-square overflow-hidden relative">
                           <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" referrerPolicy="no-referrer" />
-                          <button 
+                          <button
                             onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
                             className={`absolute top-3 right-3 p-2 rounded-full backdrop-blur-md shadow-lg ${isFav ? 'bg-red-500 text-white' : 'bg-white/70 text-ios-gray'}`}
                           >
@@ -1934,12 +2035,12 @@ export default function App() {
               <section className="ios-card bg-gradient-to-br from-brand-start to-brand-end p-8 sm:p-12 relative overflow-hidden group mt-12">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl group-hover:bg-white/10 transition-colors duration-700" />
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-black/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
-                
+
                 <div className="relative z-10 flex flex-col items-center text-center space-y-6 max-w-2xl mx-auto">
                   <div className="w-20 h-20 bg-white/20 backdrop-blur-xl rounded-3xl flex items-center justify-center shadow-2xl transform group-hover:scale-110 group-hover:rotate-6 transition-all duration-500">
                     <Share2 className="text-white" size={36} />
                   </div>
-                  
+
                   <div className="space-y-3">
                     <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
                       {t('share_title')}
@@ -1948,8 +2049,8 @@ export default function App() {
                       {t('share_desc')}
                     </p>
                   </div>
-                  
-                  <button 
+
+                  <button
                     onClick={() => {
                       if (navigator.share) {
                         navigator.share({
@@ -1972,7 +2073,7 @@ export default function App() {
             </motion.div>
           )}
           {view === 'success' && (
-            <motion.div 
+            <motion.div
               key="success"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1982,7 +2083,7 @@ export default function App() {
               <div className="w-32 h-32 bg-green-500 rounded-[2.5rem] flex items-center justify-center mx-auto shadow-2xl shadow-green-500/20 transform rotate-6 hover:rotate-0 transition-transform duration-500">
                 <Check className="text-white" size={64} strokeWidth={4} />
               </div>
-              
+
               <div className="space-y-6">
                 <h2 className="text-5xl sm:text-7xl font-display font-black tracking-tight">{t('payment_success')}</h2>
                 <div className="space-y-4 max-w-lg mx-auto">
@@ -1996,13 +2097,13 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-8">
-                <button 
+                <button
                   onClick={() => goTo('dashboard')}
                   className="ios-btn-primary py-5 text-lg"
                 >
                   {t('dashboard')}
                 </button>
-                <button 
+                <button
                   onClick={() => goTo('home')}
                   className="px-8 py-5 bg-ios-secondary text-ios-label rounded-3xl font-black text-lg hover:bg-ios-secondary/80 transition-all border border-black/5"
                 >
@@ -2018,7 +2119,7 @@ export default function App() {
       <AnimatePresence>
         {showDeleteConfirm && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -2033,16 +2134,16 @@ export default function App() {
                   Questa azione è irreversibile. Tutti i tuoi annunci, ricerche e match verranno cancellati definitivamente.
                 </p>
               </div>
-              
+
               <div className="p-4 bg-ios-secondary/30 flex flex-col gap-2">
-                <button 
+                <button
                   onClick={handleDeleteAccount}
                   disabled={loading}
                   className="w-full py-4 bg-red-500 text-white font-black rounded-2xl shadow-lg shadow-red-500/20 active:scale-95 transition-all text-sm uppercase tracking-widest disabled:opacity-50"
                 >
                   {loading ? 'Eliminazione...' : 'Sì, elimina definitivamente'}
                 </button>
-                <button 
+                <button
                   onClick={() => setShowDeleteConfirm(false)}
                   className="w-full py-4 bg-white text-ios-label font-black rounded-2xl active:scale-95 transition-all text-sm border border-black/5"
                 >
@@ -2058,7 +2159,7 @@ export default function App() {
       <AnimatePresence>
         {showLogoutConfirm && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -2073,9 +2174,9 @@ export default function App() {
                   Sei sicuro di voler uscire? Dovrai accedere nuovamente per gestire i tuoi annunci e i tuoi match.
                 </p>
               </div>
-              
+
               <div className="p-4 bg-ios-secondary/30 flex flex-col gap-2">
-                <button 
+                <button
                   onClick={() => {
                     handleLogout();
                     setShowLogoutConfirm(false);
@@ -2084,7 +2185,7 @@ export default function App() {
                 >
                   Sì, disconnetti
                 </button>
-                <button 
+                <button
                   onClick={() => setShowLogoutConfirm(false)}
                   className="w-full py-4 bg-white text-ios-label font-black rounded-2xl active:scale-95 transition-all text-sm border border-black/5"
                 >
@@ -2100,14 +2201,14 @@ export default function App() {
       <AnimatePresence>
         {selectedItem && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 40 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 40 }}
               className="w-full max-w-2xl bg-white rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
             >
               <div className="relative h-64 sm:h-96 shrink-0 bg-black flex items-center justify-center group overflow-hidden">
-                <motion.div 
+                <motion.div
                   className="flex h-full w-full cursor-grab active:cursor-grabbing"
                   drag="x"
                   dragConstraints={{ left: 0, right: 0 }}
@@ -2121,15 +2222,15 @@ export default function App() {
                   }}
                 >
                   <AnimatePresence mode="wait">
-                    <motion.img 
+                    <motion.img
                       key={activeImageIndex}
-                      src={(selectedItem.images && selectedItem.images.length > 0) ? selectedItem.images[activeImageIndex] : selectedItem.image_url} 
-                      alt={selectedItem.title} 
+                      src={(selectedItem.images && selectedItem.images.length > 0) ? selectedItem.images[activeImageIndex] : selectedItem.image_url}
+                      alt={selectedItem.title}
                       initial={{ opacity: 0, scale: 1.1 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.9 }}
                       transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                      className="w-full h-full object-cover select-none" 
+                      className="w-full h-full object-cover select-none"
                       onClick={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const x = e.clientX - rect.left;
@@ -2141,7 +2242,7 @@ export default function App() {
                           setIsZoomed(true);
                         }
                       }}
-                      referrerPolicy="no-referrer" 
+                      referrerPolicy="no-referrer"
                     />
                   </AnimatePresence>
                 </motion.div>
@@ -2150,15 +2251,15 @@ export default function App() {
                 {selectedItem.images && selectedItem.images.length > 1 && (
                   <div className="absolute inset-x-0 bottom-6 flex justify-center gap-2 z-10 pointer-events-none">
                     {selectedItem.images.map((_, i) => (
-                      <div 
-                        key={i} 
+                      <div
+                        key={i}
                         className={`w-2 h-2 rounded-full transition-all duration-300 ${i === activeImageIndex ? 'w-6 bg-white shadow-md' : 'bg-white/40 backdrop-blur-md'}`}
                       />
                     ))}
                   </div>
                 )}
 
-                <button 
+                <button
                   onClick={() => {
                     setSelectedItem(null);
                     setActiveImageIndex(0);
@@ -2175,14 +2276,14 @@ export default function App() {
               {/* Zoom Overlay */}
               <AnimatePresence>
                 {isZoomed && (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     onClick={() => setIsZoomed(false)}
                     className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4 sm:p-12 cursor-zoom-out"
                   >
-                    <motion.img 
+                    <motion.img
                       initial={{ scale: 0.9 }}
                       animate={{ scale: 1 }}
                       src={(selectedItem.images && selectedItem.images.length > 0) ? selectedItem.images[activeImageIndex] : selectedItem.image_url}
@@ -2218,40 +2319,148 @@ export default function App() {
                   </p>
                 </div>
 
-                <div className="pt-6 border-t border-black/[0.05] flex flex-row gap-3">
-                  <button 
-                    onClick={() => {
-                      if (selectedItem) {
-                        setActiveProposal({
-                          ...selectedItem,
-                          proposal_id: 0,
-                          request_id: 0,
-                          item_id: selectedItem.id,
-                          status: 'pending',
-                          expires_at: new Date().toISOString()
-                        } as Proposal);
-                        setSelectedItem(null);
-                        requireAuth('checkout');
-                      }
-                    }}
-                    className="flex-[7] ios-btn-primary py-5 flex items-center justify-center gap-3 shadow-xl shadow-brand-end/25"
-                  >
-                    <ShoppingBag size={20} />
-                    <span className="truncate">{t('buy_now')}</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      toggleFavorite(selectedItem.id);
-                    }}
-                    className={`flex-[3] py-5 rounded-xl font-black transition-all flex items-center justify-center gap-2 ${
-                      favorites.some(f => f.id === selectedItem.id)
-                        ? 'bg-red-500 text-white shadow-xl shadow-red-500/20'
-                        : 'bg-ios-secondary text-ios-gray border border-black/5 hover:bg-ios-secondary/80'
-                    }`}
-                  >
-                    <Heart size={20} fill={favorites.some(f => f.id === selectedItem.id) ? "currentColor" : "none"} />
-                    <span className="hidden sm:inline">{favorites.some(f => f.id === selectedItem.id) ? t('saved') : t('save_item')}</span>
-                  </button>
+                {/* Product Detail Actions */}
+                <div className="pt-6 border-t border-black/[0.05] space-y-6">
+                  {currentUser?.id === selectedItem.seller_id ? (
+                    <div className="space-y-6">
+                      {/* Seller Stats */}
+                      <div className="flex items-center gap-6 p-4 bg-ios-secondary/30 rounded-2xl border border-black/5">
+                        <div className="flex items-center gap-2">
+                          <Heart size={18} className="text-red-500" fill="currentColor" />
+                          <span className="text-xl font-black">{selectedItem.likecount || 0}</span>
+                          <span className="text-[10px] font-bold text-ios-gray uppercase tracking-widest ml-1">Likes</span>
+                        </div>
+                        <div className="w-px h-8 bg-black/5" />
+                        <div className="flex items-center gap-2">
+                          <Eye size={18} className="text-ios-blue" />
+                          <span className="text-xl font-black">24</span>
+                          <span className="text-[10px] font-bold text-ios-gray uppercase tracking-widest ml-1">Visite</span>
+                        </div>
+                      </div>
+
+                      {/* Transaction Workflow for Seller */}
+                      {(() => {
+                        const tx = transactions.find(t => t.item_id === selectedItem.id);
+                        if (!tx) return null;
+
+                        const deadlineDate = new Date(tx.shipping_deadline);
+                        const diff = deadlineDate.getTime() - new Date().getTime();
+                        const daysLeft = Math.floor(diff / (1000 * 60 * 60 * 24));
+                        const hoursLeft = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+                        return (
+                          <div className="p-6 bg-orange-500/5 border border-orange-500/20 rounded-3xl space-y-5">
+                            <div className="flex items-center gap-3 text-orange-600">
+                              <ShoppingBag size={20} />
+                              <h5 className="font-black uppercase tracking-widest text-xs">VENDITA RICHIESTA</h5>
+                            </div>
+
+                            {tx.status === 'paid' && (
+                              <div className="space-y-4">
+                                <div className="flex items-center gap-3 p-3 bg-white/50 rounded-xl">
+                                  <Clock size={16} className="text-orange-500" />
+                                  <span className="text-sm font-bold">
+                                    Spedire entro: <span className="text-orange-600 font-black">{daysLeft}g {hoursLeft}h</span>
+                                  </span>
+                                </div>
+                                <p className="text-[10px] font-medium text-ios-gray">Il pagamento è stato confermato e protetto. Inserisci i dati per procedere.</p>
+
+                                <form onSubmit={(e) => {
+                                  e.preventDefault();
+                                  const formData = new FormData(e.currentTarget as HTMLFormElement);
+                                  handleShip(tx.id, {
+                                    tracking_id: formData.get('tracking') as string,
+                                    courier: formData.get('courier') as string,
+                                    seller_iban: formData.get('iban') as string
+                                  });
+                                }} className="space-y-3">
+                                  <input name="tracking" required placeholder={t('tracking_code')} className="checkout-input !py-3 !text-sm w-full" />
+                                  <input name="courier" required placeholder={t('courier_placeholder')} className="checkout-input !py-3 !text-sm w-full" />
+                                  <input name="iban" required placeholder={t('iban_placeholder')} className="checkout-input !py-3 !text-sm w-full" />
+                                  <button type="submit" className="w-full ios-btn-primary !py-4 shadow-lg">{t('confirm_shipping_cta')}</button>
+                                </form>
+                              </div>
+                            )}
+
+                            {tx.status === 'shipped' && (
+                              <div className="p-4 bg-ios-blue/10 text-ios-blue rounded-2xl flex items-center gap-3">
+                                <Truck size={20} />
+                                <span className="text-sm font-bold">Spedizione confermata: {tx.tracking_id}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => {
+                            setNewItem({
+                              title: selectedItem.title,
+                              description: selectedItem.description,
+                              price: selectedItem.price.toString(),
+                              location: selectedItem.location,
+                              category: selectedItem.category,
+                              image_url: selectedItem.image_url,
+                              images: selectedItem.images || []
+                            });
+                            setImagePreviews(selectedItem.images || [selectedItem.image_url]);
+                            setIsEditingItem(true);
+                            setEditingId(selectedItem.id);
+                            setSelectedItem(null);
+                            setView('sell');
+                          }}
+                          className="flex-1 py-4 bg-ios-secondary text-ios-label font-black rounded-2xl hover:bg-ios-secondary/80 flex items-center justify-center gap-2"
+                        >
+                          <RefreshCw size={18} />
+                          Modifica
+                        </button>
+                        <button
+                          onClick={() => handleDeleteItem(selectedItem.id)}
+                          className="flex-1 py-4 bg-red-50 text-red-600 font-black rounded-2xl hover:bg-red-100 flex items-center justify-center gap-2"
+                        >
+                          <Trash2 size={18} />
+                          Elimina
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-row gap-3">
+                      <button
+                        onClick={() => {
+                          if (selectedItem) {
+                            setActiveProposal({
+                              ...selectedItem,
+                              proposal_id: 0,
+                              request_id: 0,
+                              item_id: selectedItem.id,
+                              status: 'pending',
+                              expires_at: new Date().toISOString()
+                            } as Proposal);
+                            setSelectedItem(null);
+                            requireAuth('checkout');
+                          }
+                        }}
+                        className="flex-[7] ios-btn-primary py-5 flex items-center justify-center gap-3 shadow-xl shadow-brand-end/25"
+                      >
+                        <ShoppingBag size={20} />
+                        <span className="truncate">{t('buy_now')}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          toggleFavorite(selectedItem.id);
+                        }}
+                        className={`flex-[3] py-5 rounded-xl font-black transition-all flex items-center justify-center gap-2 ${
+                          favorites.some(f => f.id === selectedItem.id)
+                            ? 'bg-red-500 text-white shadow-xl shadow-red-500/20'
+                            : 'bg-ios-secondary text-ios-gray border border-black/5 hover:bg-ios-secondary/80'
+                        }`}
+                      >
+                        <Heart size={20} fill={favorites.some(f => f.id === selectedItem.id) ? "currentColor" : "none"} />
+                        <span className="hidden sm:inline">{favorites.some(f => f.id === selectedItem.id) ? t('saved') : t('save_item')}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>

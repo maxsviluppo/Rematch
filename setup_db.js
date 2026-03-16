@@ -23,6 +23,7 @@ async function setup() {
           location TEXT,
           category TEXT,
           image_url TEXT,
+          images JSONB DEFAULT '[]'::jsonb,
           status TEXT DEFAULT 'available',
           created_at TIMESTAMPTZ DEFAULT NOW(),
           updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -91,7 +92,12 @@ async function setup() {
           courier TEXT,
           shipping_deadline TIMESTAMPTZ,
           shipped_at TIMESTAMPTZ,
-          seller_iban TEXT,
+           seller_iban TEXT,
+           title TEXT,
+           price DECIMAL(10,2),
+           category TEXT,
+           image_url TEXT,
+           images JSONB DEFAULT '[]'::jsonb,
           created_at TIMESTAMPTZ DEFAULT NOW(),
           updated_at TIMESTAMPTZ DEFAULT NOW()
       );
