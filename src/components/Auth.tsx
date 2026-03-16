@@ -57,11 +57,10 @@ export default function Auth({ onLogin }: AuthProps) {
 
         if (signUpError) throw signUpError;
 
-        // If registration passes, we can just switch them to login mode 
-        // with their credentials ready, as requested by the user.
-        setIsLogin(true);
-        setError("Registrazione completata! Premi Accedi per entrare.");
-        // Non facciamo il login automatico perché l'utente ha chiesto di fare il passaggio esplicito a "Login"
+        if (data.user) {
+          // Success registration -> Auto login
+          onLogin(data.user.id, nome);
+        }
       }
     } catch (err: any) {
       if (isLogin && err.message?.toLowerCase().includes('invalid')) {

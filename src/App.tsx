@@ -139,6 +139,10 @@ export default function App() {
     max_price: '',
     location: ''
   });
+  const [customCitySell, setCustomCitySell] = useState('');
+  const [customCityBuy, setCustomCityBuy] = useState('');
+  const [isCustomCitySell, setIsCustomCitySell] = useState(false);
+  const [isCustomCityBuy, setIsCustomCityBuy] = useState(false);
 
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -231,10 +235,11 @@ export default function App() {
     if (currentUser) {
       notificationService.init(currentUser.id);
 
-      // Auto-refresh match ogni 60 secondi come richiesto
+      /*
       interval = setInterval(() => {
         runMatching().then(() => fetchData());
       }, 60000);
+      */
     }
 
     if ("Notification" in window) {
@@ -608,42 +613,33 @@ export default function App() {
     if (!activeProposal || !currentUser) return;
     setLoading(true);
     try {
-      // 1. Create Transaction (Status: paid)
-      const deadline = new Date();
-      deadline.setDate(deadline.getDate() + 5);
+      const response = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposal_id: activeProposal.proposal_id,
+          buyer_id: currentUser.id,
+          seller_id: activeProposal.seller_id,
+          item_id: activeProposal.item_id,
+          title: activeProposal.title,
+          price: activeProposal.price,
+          category: activeProposal.category,
+          image_url: activeProposal.image_url,
+          images: activeProposal.images,
+          shipping_details: shippingDetails
+        })
+      });
 
-      const { data: tx, error: txError } = await supabase.from('transactions').insert({
-        proposal_id: activeProposal.proposal_id,
-        buyer_id: currentUser.id,
-        seller_id: activeProposal.seller_id,
-        item_id: activeProposal.item_id,
-        status: 'paid',
-        buyer_name: shippingDetails.name,
-        buyer_surname: shippingDetails.surname,
-        buyer_email: shippingDetails.email,
-        buyer_phone: shippingDetails.phone,
-        buyer_address: shippingDetails.address,
-        buyer_city: shippingDetails.city,
-        buyer_cap: shippingDetails.cap,
-        shipping_deadline: deadline.toISOString(),
-        title: activeProposal.title,
-        price: activeProposal.price,
-        image_url: activeProposal.image_url,
-        images: activeProposal.images,
-        category: activeProposal.category
-      }).select().single();
-
-      if (txError) throw txError;
-
-      // 2. Mark proposal as accepted and item as sold
-      await supabase.from('proposals').update({ status: 'accepted' }).eq('id', activeProposal.proposal_id);
-      await supabase.from('items').update({ status: 'sold' }).eq('id', activeProposal.item_id);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Errore durante il checkout');
+      }
 
       setView('success');
-      fetchData();
+      await fetchData();
     } catch (err: any) {
       console.error(err);
-      alert("Errore durante il checkout: " + (err.message || "Errore sconosciuto"));
+      alert("Errore durante il checkout: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -651,36 +647,35 @@ export default function App() {
 
   const handleShip = async (transactionId: number, trackingInfo: { tracking_id: string, courier: string, seller_iban: string }) => {
     try {
-      const { error } = await supabase.from('transactions').update({
-        status: 'shipped',
-        tracking_id: trackingInfo.tracking_id,
-        courier: trackingInfo.courier,
-        seller_iban: trackingInfo.seller_iban,
-        shipped_at: new Date().toISOString()
-      }).eq('id', transactionId);
-
-      if (error) throw error;
+      const response = await fetch(`/api/transactions/${transactionId}/ship`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(trackingInfo)
+      });
+      
+      if (!response.ok) throw new Error('Errore durante la conferma spedizione');
 
       alert(t('confirm_shipping_cta') + " OK!");
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert(err.message);
     }
   };
 
   const handleConfirmArrival = async (transactionId: number) => {
     try {
-      const { error } = await supabase.from('transactions').update({
-        status: 'delivered',
-        updated_at: new Date().toISOString()
-      }).eq('id', transactionId);
-
-      if (error) throw error;
+      const response = await fetch(`/api/transactions/${transactionId}/confirm-arrival`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) throw new Error('Errore durante la conferma ricezione');
 
       alert(t('item_arrived'));
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert(err.message);
     }
   };
 
@@ -1168,8 +1163,16 @@ export default function App() {
                         <select
                           required
                           className="rm-input-lg appearance-none cursor-pointer w-full"
-                          value={newItem.location}
-                          onChange={e => setNewItem({...newItem, location: e.target.value})}
+                          value={isCustomCitySell ? 'custom' : newItem.location}
+                          onChange={e => {
+                            if (e.target.value === 'custom') {
+                              setIsCustomCitySell(true);
+                              setNewItem({...newItem, location: ''});
+                            } else {
+                              setIsCustomCitySell(false);
+                              setNewItem({...newItem, location: e.target.value});
+                            }
+                          }}
                         >
                           <option value="" disabled>{t('city_select_placeholder')}</option>
                           <option value="Tutte le città">{t('all_cities')}</option>
@@ -1185,7 +1188,24 @@ export default function App() {
                           <option value="Catania">Catania</option>
                           <option value="Venezia">Venezia</option>
                           <option value="Verona">Verona</option>
+                          <option value="custom">Altro (Inserisci città)</option>
                         </select>
+                        {isCustomCitySell && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-3"
+                          >
+                            <input
+                              type="text"
+                              required
+                              placeholder="Inserisci il nome della città"
+                              className="rm-input-lg"
+                              value={newItem.location}
+                              onChange={e => setNewItem({...newItem, location: e.target.value})}
+                            />
+                          </motion.div>
+                        )}
                         <div className="absolute inset-y-0 right-6 sm:right-10 flex items-center pointer-events-none text-ios-gray">
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                         </div>
@@ -1274,8 +1294,16 @@ export default function App() {
                         <select
                           required
                           className="rm-input-lg appearance-none cursor-pointer w-full"
-                          value={newRequest.location}
-                          onChange={e => setNewRequest({...newRequest, location: e.target.value})}
+                          value={isCustomCityBuy ? 'custom' : newRequest.location}
+                          onChange={e => {
+                            if (e.target.value === 'custom') {
+                              setIsCustomCityBuy(true);
+                              setNewRequest({...newRequest, location: ''});
+                            } else {
+                              setIsCustomCityBuy(false);
+                              setNewRequest({...newRequest, location: e.target.value});
+                            }
+                          }}
                         >
                           <option value="" disabled>{t('city_select_placeholder')}</option>
                           <option value="Tutte le città">{t('all_cities')}</option>
@@ -1291,7 +1319,24 @@ export default function App() {
                           <option value="Catania">Catania</option>
                           <option value="Venezia">Venezia</option>
                           <option value="Verona">Verona</option>
+                          <option value="custom">Altro (Inserisci città)</option>
                         </select>
+                        {isCustomCityBuy && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-3"
+                          >
+                            <input
+                              type="text"
+                              required
+                              placeholder="Inserisci il nome della città"
+                              className="rm-input-lg"
+                              value={newRequest.location}
+                              onChange={e => setNewRequest({...newRequest, location: e.target.value})}
+                            />
+                          </motion.div>
+                        )}
                         <div className="absolute inset-y-0 right-6 sm:right-10 flex items-center pointer-events-none text-ios-gray">
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                         </div>

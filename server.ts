@@ -15,6 +15,9 @@ const __dirname = path.dirname(__filename);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 // Initialize Database (Schema should be created in Supabase dashboard or via initial migration)
@@ -149,7 +152,7 @@ async function startServer() {
       origin: "*",
     }
   });
-  const PORT = 3007;
+  const PORT = parseInt(process.env.PORT || "3000");
 
   // Socket.io connection handling
   io.on("connection", (socket) => {
