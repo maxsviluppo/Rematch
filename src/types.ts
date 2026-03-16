@@ -54,6 +54,9 @@ export interface Transaction {
   
   seller_iban?: string;
   
+  review_rating?: number;
+  review_comment?: string;
+  
   title: string;
   price: number;
   image_url: string;

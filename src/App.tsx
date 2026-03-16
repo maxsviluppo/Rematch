@@ -29,10 +29,24 @@ import {
   RefreshCw,
   X,
   Heart,
-  MessageCircle,
+  Globe,
+  Star,
+  Check,
+  Facebook,
+  Twitter,
+  Instagram,
+  Mail,
+  Shield,
+  HelpCircle,
+  Lock,
+  ExternalLink,
+  Smartphone,
+  Info,
+  Share2,
   LogOut,
   Trash2,
-  Share2
+  SlidersHorizontal,
+  MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Item, Request, Proposal, Transaction } from './types';
@@ -78,12 +92,12 @@ export default function App() {
     return translations[currentLang][key] || translations['it'][key] || key;
   };
 
-  const [view, setView] = useState<'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'auth'>('home');
-  const goTo = (v: 'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'auth') => {
+  const [view, setView] = useState<'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'auth' | 'success'>('home');
+  const goTo = (v: 'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'auth' | 'success') => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setView(v);
   };
-  const requireAuth = (targetView: 'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina') => {
+  const requireAuth = (targetView: 'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'success') => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (!session) { setView('auth'); } else { setView(targetView); }
   };
@@ -127,6 +141,13 @@ export default function App() {
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [showLangMenu, setShowLangMenu] = useState(false);
+  const [reviewState, setReviewState] = useState<{rating: number, comment: string, transactionId: number | null}>({
+    rating: 0,
+    comment: '',
+    transactionId: null
+  });
 
   // Auto-hide header logic
   const [showHeader, setShowHeader] = useState(true);
@@ -550,31 +571,44 @@ export default function App() {
   };
 
   const handleCheckout = async (shippingDetails: any) => {
-    if (!activeProposal) return;
+    if (!activeProposal || !currentUser) return;
     setLoading(true);
     try {
-      const response = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          proposal_id: activeProposal.proposal_id,
-          buyer_id: (currentUser?.id || ''),
-          seller_id: activeProposal.seller_id,
-          item_id: activeProposal.item_id,
-          shipping_details: shippingDetails
-        })
-      });
+      // 1. Create Transaction (Status: paid)
+      const deadline = new Date();
+      deadline.setDate(deadline.getDate() + 5);
 
-      if (response.ok) {
-        alert("Ordine effettuato con successo!");
-        requireAuth('dashboard');
-        fetchData();
-      } else {
-        const err = await response.json();
-        alert("Errore durante il checkout: " + err.error);
-      }
-    } catch (err) {
+      const { data: tx, error: txError } = await supabase.from('transactions').insert({
+        proposal_id: activeProposal.proposal_id,
+        buyer_id: currentUser.id,
+        seller_id: activeProposal.seller_id,
+        item_id: activeProposal.item_id,
+        status: 'paid',
+        buyer_name: shippingDetails.name,
+        buyer_surname: shippingDetails.surname,
+        buyer_email: shippingDetails.email,
+        buyer_phone: shippingDetails.phone,
+        buyer_address: shippingDetails.address,
+        buyer_city: shippingDetails.city,
+        buyer_cap: shippingDetails.cap,
+        shipping_deadline: deadline.toISOString(),
+        title: activeProposal.title,
+        price: activeProposal.price,
+        image_url: activeProposal.image_url,
+        images: activeProposal.images
+      }).select().single();
+
+      if (txError) throw txError;
+
+      // 2. Mark proposal as accepted and item as sold
+      await supabase.from('proposals').update({ status: 'accepted' }).eq('id', activeProposal.proposal_id);
+      await supabase.from('items').update({ status: 'sold' }).eq('id', activeProposal.item_id);
+
+      setView('success');
+      fetchData();
+    } catch (err: any) {
       console.error(err);
+      alert("Errore durante il checkout: " + (err.message || "Errore sconosciuto"));
     } finally {
       setLoading(false);
     }
@@ -582,15 +616,18 @@ export default function App() {
 
   const handleShip = async (transactionId: number, trackingInfo: { tracking_id: string, courier: string, seller_iban: string }) => {
     try {
-      const response = await fetch(`/api/transactions/${transactionId}/ship`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trackingInfo)
-      });
-      if (response.ok) {
-        alert("Spedizione confermata!");
-        fetchData();
-      }
+      const { error } = await supabase.from('transactions').update({
+        status: 'shipped',
+        tracking_id: trackingInfo.tracking_id,
+        courier: trackingInfo.courier,
+        seller_iban: trackingInfo.seller_iban,
+        shipped_at: new Date().toISOString()
+      }).eq('id', transactionId);
+
+      if (error) throw error;
+      
+      alert(t('confirm_shipping_cta') + " OK!");
+      fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -598,13 +635,36 @@ export default function App() {
 
   const handleConfirmArrival = async (transactionId: number) => {
     try {
-      const response = await fetch(`/api/transactions/${transactionId}/confirm-arrival`, {
-        method: 'POST'
-      });
-      if (response.ok) {
-        alert("Ricezione confermata! Transazione completata.");
-        fetchData();
-      }
+      const { error } = await supabase.from('transactions').update({
+        status: 'delivered',
+        updated_at: new Date().toISOString()
+      }).eq('id', transactionId);
+
+      if (error) throw error;
+      
+      alert(t('item_arrived'));
+      fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewState.transactionId) return;
+    
+    try {
+      const { error } = await supabase.from('transactions').update({
+        review_rating: reviewState.rating,
+        review_comment: reviewState.comment,
+        status: 'completed'
+      }).eq('id', reviewState.transactionId);
+
+      if (error) throw error;
+
+      alert("Grazie per la tua recensione!");
+      setReviewState({ rating: 0, comment: '', transactionId: null });
+      fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -663,8 +723,11 @@ export default function App() {
             )}
             
             {/* Language Switcher */}
-            <div className="relative group p-1">
-              <button className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 hover:bg-white/10 rounded-full border border-white/10 transition-all active:scale-95">
+            <div className="relative p-1">
+              <button 
+                onClick={() => setShowLangMenu(!showLangMenu)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 hover:bg-white/10 rounded-full border border-white/10 transition-all active:scale-95"
+              >
                 <span className="text-lg leading-none">
                   {currentLang === 'it' && '🇮🇹'}
                   {currentLang === 'en' && '🇬🇧'}
@@ -674,24 +737,42 @@ export default function App() {
                 </span>
               </button>
               
-              <div className="absolute right-0 mt-2 w-40 bg-[#2c2c2e]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-[100] overflow-hidden">
-                {(['it', 'en', 'es', 'fr', 'de'] as Language[]).map(lang => (
-                  <button
-                    key={lang}
-                    onClick={() => setCurrentLang(lang)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold transition-all hover:bg-white/10 ${currentLang === lang ? 'text-brand-end' : 'text-white'}`}
-                  >
-                    <span>
-                      {lang === 'it' && '🇮🇹'}
-                      {lang === 'en' && '🇬🇧'}
-                      {lang === 'es' && '🇪🇸'}
-                      {lang === 'fr' && '🇫🇷'}
-                      {lang === 'de' && '🇩🇪'}
-                    </span>
-                    <span className="capitalize">{lang === 'it' ? 'Italiano' : lang === 'en' ? 'English' : lang === 'es' ? 'Español' : lang === 'fr' ? 'Français' : 'Deutsch'}</span>
-                  </button>
-                ))}
-              </div>
+              <AnimatePresence>
+                {showLangMenu && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-[90]" 
+                      onClick={() => setShowLangMenu(false)}
+                    />
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                      className="absolute right-0 mt-2 w-48 bg-[#2c2c2e]/98 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl z-[100] overflow-hidden"
+                    >
+                      {(['it', 'en', 'es', 'fr', 'de'] as Language[]).map(lang => (
+                        <button
+                          key={lang}
+                          onClick={() => {
+                            setCurrentLang(lang);
+                            setShowLangMenu(false);
+                          }}
+                          className={`w-full flex items-center gap-3 px-4 py-3.5 text-sm font-bold transition-all hover:bg-white/10 ${currentLang === lang ? 'text-brand-end' : 'text-white'}`}
+                        >
+                          <span className="text-lg">
+                            {lang === 'it' && '🇮🇹'}
+                            {lang === 'en' && '🇬🇧'}
+                            {lang === 'es' && '🇪🇸'}
+                            {lang === 'fr' && '🇫🇷'}
+                            {lang === 'de' && '🇩🇪'}
+                          </span>
+                          <span className="capitalize">{lang === 'it' ? 'Italiano' : lang === 'en' ? 'English' : lang === 'es' ? 'Español' : lang === 'fr' ? 'Français' : 'Deutsch'}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
 
             <button className="relative p-2 text-brand-end/80 hover:text-brand-end transition-all">
@@ -791,22 +872,22 @@ export default function App() {
                 <div className="relative z-10 max-w-xl space-y-6 sm:space-y-8">
                   <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-xl rounded-full border border-white/10">
                     <TrendingUp size={14} className="text-brand-start" />
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Marketplace Intelligente</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t('hero_badge')}</span>
                   </div>
                   <h1 className="text-3xl sm:text-5xl md:text-6xl leading-tight font-display font-black tracking-tighter">
-                    Dai nuova vita<br />
-                    <span className="text-transparent bg-clip-text" style={{backgroundImage:'linear-gradient(135deg,#FFB800,#FF7A00)'}}>ai tuoi oggetti.</span>
+                    {t('hero_title1')}<br />
+                    <span className="text-transparent bg-clip-text" style={{backgroundImage:'linear-gradient(135deg,#FFB800,#FF7A00)'}}>{t('hero_title2')}</span>
                   </h1>
                   <p className="text-white/55 text-sm sm:text-lg leading-relaxed max-w-md font-medium">
-                    ReMatch connette chi vende e chi cerca tramite un matchmaking intelligente basato sull'intento reale.
+                    {t('hero_desc')}
                   </p>
                   <div className="flex flex-wrap gap-3 pt-2">
                     <button onClick={() => requireAuth('sell')} className="ios-btn-primary group flex items-center gap-2">
-                      Inizia a Vendere
+                      {t('hero_start_selling')}
                       <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                     </button>
                     <button onClick={() => requireAuth('buy')} className="px-6 py-3.5 bg-white/10 border border-white/15 rounded-xl font-bold text-sm hover:bg-white/18 transition-all active:scale-95">
-                      Cerca Oggetti
+                      {t('hero_search_items')}
                     </button>
                   </div>
                 </div>
@@ -1055,8 +1136,8 @@ export default function App() {
                           value={newItem.location}
                           onChange={e => setNewItem({...newItem, location: e.target.value})}
                         >
-                          <option value="" disabled>Seleziona città...</option>
-                          <option value="Tutte le città">Tutte le città</option>
+                          <option value="" disabled>{t('city_select_placeholder')}</option>
+                          <option value="Tutte le città">{t('all_cities')}</option>
                           <option value="Roma">Roma</option>
                           <option value="Milano">Milano</option>
                           <option value="Napoli">Napoli</option>
@@ -1082,7 +1163,7 @@ export default function App() {
                     type="submit"
                     className="ios-btn-primary w-full text-lg"
                   >
-                    {loading ? 'Pubblicazione...' : 'Metti in Vendita'}
+                    {loading ? t('publishing') : t('put_in_sale')}
                   </button>
                 </form>
               </div>
@@ -1100,17 +1181,17 @@ export default function App() {
               <div className="ios-card p-5 sm:p-10 space-y-6 sm:space-y-8">
                 <div className="page-hero">
                   <div className="page-hero-icon"><Search size={24} /></div>
-                  <h2>Cerca un Oggetto</h2>
-                  <p>Dicci cosa cerchi e ti avviseremo appena appare.</p>
+                  <h2>{t('buy_title')}</h2>
+                  <p>{t('buy_desc')}</p>
                 </div>
                 
                 <form onSubmit={handleBuy} className="space-y-5 sm:space-y-6">
                   <div className="space-y-3 sm:space-y-4">
-                    <label className="rm-label">Cosa cerchi?</label>
+                    <label className="rm-label">{t('what_looking_for')}</label>
                     <input 
                       required
                       type="text" 
-                      placeholder="es. MacBook Pro, Tavolo Legno..."
+                      placeholder={t('placeholder_buy_title')}
                       className="rm-input-lg"
                       value={newRequest.query}
                       onChange={e => setNewRequest({...newRequest, query: e.target.value})}
@@ -1119,10 +1200,10 @@ export default function App() {
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
                     <div className="space-y-3 sm:space-y-4">
-                      <label className="rm-label">Oppure digita Prezzo Massimo (€)</label>
+                      <label className="rm-label">{t('max_price_label')}</label>
                       <input 
                         type="number" 
-                        placeholder="Nessun limite"
+                        placeholder={t('no_limit')}
                         className="rm-input-lg"
                         value={newRequest.max_price}
                         onChange={e => setNewRequest({...newRequest, max_price: e.target.value})}
@@ -1130,7 +1211,7 @@ export default function App() {
                     </div>
 
                     <div className="space-y-3 sm:space-y-4">
-                      <label className="rm-label">Dove?</label>
+                      <label className="rm-label">{t('where')}</label>
                       <div className="relative">
                         <select 
                           required
@@ -1138,8 +1219,8 @@ export default function App() {
                           value={newRequest.location}
                           onChange={e => setNewRequest({...newRequest, location: e.target.value})}
                         >
-                          <option value="" disabled>Seleziona città...</option>
-                          <option value="Tutte le città">Tutte le città</option>
+                          <option value="" disabled>{t('city_select_placeholder')}</option>
+                          <option value="Tutte le città">{t('all_cities')}</option>
                           <option value="Roma">Roma</option>
                           <option value="Milano">Milano</option>
                           <option value="Napoli">Napoli</option>
@@ -1165,7 +1246,7 @@ export default function App() {
                     type="submit"
                     className="ios-btn-primary w-full text-lg"
                   >
-                    {loading ? 'Salvataggio...' : (newRequest.query !== '' && topSearches && userRequests.find(r => r.query === newRequest.query) ? 'Aggiorna Ricerca Match' : 'Crea Ricerca Match')}
+                    {loading ? t('saving') : (newRequest.query !== '' && topSearches && userRequests.find(r => r.query === newRequest.query) ? t('update_match_search') : t('create_match_search'))}
                   </button>
                 </form>
               </div>
@@ -1239,8 +1320,12 @@ export default function App() {
             >
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 sm:gap-8">
                 <div className="space-y-2">
-                  <h2 className="text-3xl sm:text-5xl font-display font-black tracking-tight">La tua Dashboard</h2>
-                  <p className="text-ios-gray text-base sm:text-lg font-medium">Gestisci le tue attività e i tuoi match intelligenti.</p>
+                  <h2 className="text-3xl sm:text-5xl font-display font-black tracking-tight">{t('dashboard_title')}</h2>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    <span className="text-ios-gray text-base sm:text-lg font-black">{currentUser?.nome}</span>
+                  </div>
+                  <p className="text-ios-gray/60 text-sm font-medium">{t('dashboard_desc')}</p>
                 </div>
                 <div className="flex flex-wrap gap-3 sm:gap-4 w-full sm:w-auto">
                   {!notificationsEnabled && (
@@ -1359,13 +1444,13 @@ export default function App() {
                                   onClick={() => respondToProposal(prop, 'accepted')}
                                   className="flex-1 ios-btn-primary py-3 text-sm shadow-none"
                                 >
-                                  Accetta
+                                  {t('accept')}
                                 </button>
                                 <button 
                                   onClick={() => respondToProposal(prop, 'rejected')}
                                   className="px-6 py-3 bg-ios-secondary text-ios-gray font-semibold rounded-2xl text-sm hover:bg-ios-gray/10 hover:text-ios-label active:scale-95 transition-all"
                                 >
-                                  Rifiuta
+                                  {t('reject')}
                                 </button>
                               </div>
                             </div>
@@ -1378,8 +1463,8 @@ export default function App() {
                   {/* 4. My Searches */}
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">Le mie Ricerche</h3>
-                      <span className="text-ios-gray text-xs font-medium">{userRequests.length} attive</span>
+                      <h3 className="rm-section-title">{t('my_searches')}</h3>
+                      <span className="text-ios-gray text-xs font-medium">{userRequests.length} {t('active')}</span>
                     </div>
 
                     {userRequests.length === 0 ? (
@@ -1387,7 +1472,7 @@ export default function App() {
                         <div className="w-12 h-12 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
                           <Search size={24} />
                         </div>
-                        <p className="text-ios-gray text-sm">Non hai ancora salvato nessuna ricerca.</p>
+                        <p className="text-ios-gray text-sm">{t('no_saved_searches')}</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
@@ -1400,7 +1485,7 @@ export default function App() {
                               <div>
                                 <p className="font-bold text-sm">"{req.query}"</p>
                                 <p className="text-[10px] text-ios-gray">
-                                  {req.location} • {req.max_price > 0 ? `fino a €${req.max_price}` : 'Qualsiasi prezzo'}
+                                  {req.location} • {req.max_price > 0 ? `${t('up_to')} €${req.max_price}` : t('any_price')}
                                 </p>
                               </div>
                             </div>
@@ -1417,7 +1502,7 @@ export default function App() {
                                   setView('buy');
                                 }}
                                 className="p-2 text-ios-gray hover:text-ios-blue transition-colors"
-                                title="Modifica questa ricerca"
+                                title={t('edit_search')}
                               >
                                 <RefreshCw size={18} />
                               </button>
@@ -1437,7 +1522,7 @@ export default function App() {
                   {/* 5. Sales & Purchases (Transactions) */}
                   <div className="space-y-8">
                     <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">Vendite & Acquisti</h3>
+                      <h3 className="rm-section-title">{t('sales_purchases')}</h3>
                       <div className="flex gap-2">
                         <span className="px-3 py-1 bg-ios-secondary rounded-full text-[10px] font-bold text-ios-gray uppercase tracking-widest">Live Flow</span>
                       </div>
@@ -1448,7 +1533,7 @@ export default function App() {
                         <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto shadow-sm">
                           <Clock size={24} className="text-ios-gray" />
                         </div>
-                        <p className="text-ios-gray font-bold">Nessuna transazione attiva.</p>
+                        <p className="text-ios-gray font-bold">{t('no_active_transactions')}</p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-8">
@@ -1495,47 +1580,121 @@ export default function App() {
                                       <>
                                         {t.status === 'paid' && (
                                           <div className="space-y-6">
-                                            <div className="flex items-center justify-between p-4 bg-white/80 rounded-2xl border border-black/[0.05] shadow-sm">
-                                              <div className="flex items-center gap-3">
-                                                <Clock size={20} className={isExpired ? 'text-red-500' : 'text-orange-500'} />
-                                                <span className="font-bold text-sm">Tempo Rimasto per Spedire:</span>
+                                            <div className="flex items-center gap-3 p-4 bg-orange-500/10 text-orange-600 rounded-2xl">
+                                              <Clock size={20} className="shrink-0" />
+                                              <div>
+                                                <p className="font-black text-sm uppercase tracking-tight">{t('ship_within_5_days')}</p>
+                                                <p className="text-[10px] opacity-80">{t('payment_confirmed_seller')}</p>
                                               </div>
-                                              <span className={`font-black text-lg ${isExpired ? 'text-red-600' : 'text-orange-600'}`}>
-                                                {isExpired ? 'SCADUTO' : `${daysLeft}g ${hoursLeft}h`}
-                                              </span>
                                             </div>
+
                                             <div className="space-y-4">
-                                              <h5 className="text-xs font-black uppercase tracking-widest text-ios-gray">Indirizzo Spedizione</h5>
-                                              <div className="text-sm font-bold leading-relaxed text-ios-label">
+                                              <div className="flex items-center justify-between">
+                                                <h5 className="text-xs font-black uppercase tracking-widest text-ios-gray">{t('shipping_address')}</h5>
+                                                <span className="text-[10px] text-orange-500 font-bold">{t('no_phone_notice')}</span>
+                                              </div>
+                                              <div className="text-sm font-bold leading-relaxed text-ios-label bg-white/50 p-4 rounded-2xl border border-black/[0.02]">
                                                 {t.buyer_name} {t.buyer_surname}<br />
                                                 {t.buyer_address}<br />
                                                 {t.buyer_cap}, {t.buyer_city}<br />
                                                 {t.buyer_email}
                                               </div>
                                             </div>
+
                                             <form onSubmit={(e) => {
                                               e.preventDefault();
-                                              const target = e.target as any;
+                                              const formData = new FormData(e.currentTarget);
                                               handleShip(t.id, {
-                                                tracking_id: target.tracking.value,
-                                                courier: target.courier.value,
-                                                seller_iban: target.iban.value
+                                                tracking_id: formData.get('tracking') as string,
+                                                courier: formData.get('courier') as string,
+                                                seller_iban: formData.get('iban') as string
                                               });
-                                            }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                              <input name="tracking" required placeholder="Codice Tracking" className="checkout-input !py-3 !text-sm" />
-                                              <input name="courier" required placeholder="Corriere (es. DHL, BRT)" className="checkout-input !py-3 !text-sm" />
-                                              <input name="iban" required placeholder="Il tuo IBAN" className="checkout-input !py-3 !text-sm md:col-span-2" />
-                                              <button type="submit" className="md:col-span-2 ios-btn-primary !py-4 !rounded-2xl">Conferma Spedizione</button>
+                                            }} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                              <input name="tracking" required placeholder={t('tracking_code')} className="checkout-input !py-3 !text-sm" />
+                                              <input name="courier" required placeholder={t('courier_placeholder')} className="checkout-input !py-3 !text-sm" />
+                                              <div className="md:col-span-2 space-y-2">
+                                                <label className="text-[10px] font-black uppercase text-ios-gray ml-1">{t('bank_details')}</label>
+                                                <input name="iban" required placeholder={t('iban_placeholder')} className="checkout-input !py-3 !text-sm" />
+                                              </div>
+                                              <button type="submit" className="md:col-span-2 ios-btn-primary !py-4 !rounded-2xl shadow-lg shadow-brand-end/20">{t('confirm_shipping_cta')}</button>
                                             </form>
                                           </div>
                                         )}
-                                        {t.status === 'shipped' && <p className="text-orange-600 font-bold">In attesa di conferma dall'acquirente.</p>}
+                                        {t.status === 'shipped' && (
+                                          <div className="space-y-3">
+                                            <p className="text-ios-blue font-bold text-sm tracking-tight">{t('waiting_buyer_confirm')}</p>
+                                            <div className="p-4 bg-ios-blue/5 rounded-2xl border border-ios-blue/10">
+                                              <p className="text-[10px] text-ios-blue font-bold uppercase tracking-widest mb-1">{t('tracking_for_buyer')}</p>
+                                              <p className="text-sm font-black">{t.courier} • {t.tracking_id}</p>
+                                            </div>
+                                          </div>
+                                        )}
+                                        {t.status === 'delivered' && (
+                                          <div className="p-5 bg-green-500/10 text-green-600 rounded-2xl border border-green-500/20">
+                                            <p className="font-black text-sm uppercase tracking-tight mb-2">Match Completato!</p>
+                                            <p className="text-xs font-medium leading-relaxed">{t('payment_processed_in_3_days')}</p>
+                                          </div>
+                                        )}
                                       </>
                                     ) : (
                                       <>
-                                        {t.status === 'paid' && <p className="text-orange-600 font-bold">Il venditore sta preparando la spedizione.</p>}
+                                        {t.status === 'paid' && (
+                                          <div className="space-y-4">
+                                            <div className="flex items-center gap-3 p-4 bg-ios-blue/10 text-ios-blue rounded-2xl">
+                                              <Clock size={20} className="shrink-0" />
+                                              <p className="font-bold text-sm">{t('order_shipped_within_5')}</p>
+                                            </div>
+                                            <p className="text-xs text-ios-gray font-medium leading-relaxed">{t('arrival_instructions')}</p>
+                                          </div>
+                                        )}
                                         {t.status === 'shipped' && (
-                                          <button onClick={() => handleConfirmArrival(t.id)} className="w-full bg-green-500 text-white font-black py-4 rounded-2xl">Ho ricevuto l'oggetto</button>
+                                          <div className="space-y-6">
+                                            <div className="p-4 bg-ios-blue/5 rounded-2xl border border-ios-blue/10">
+                                              <p className="text-[10px] text-ios-blue font-bold uppercase tracking-widest mb-1">{t('tracking_code')}</p>
+                                              <p className="text-sm font-black">{t.courier} • {t.tracking_id}</p>
+                                            </div>
+                                            <button 
+                                              onClick={() => handleConfirmArrival(t.id)} 
+                                              className="w-full bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/20 text-white font-black py-4 rounded-2xl transition-all active:scale-95"
+                                            >
+                                              {t('confirm_receive')}
+                                            </button>
+                                          </div>
+                                        )}
+                                        {t.status === 'delivered' && (
+                                          <div className="space-y-6">
+                                            <div className="p-4 bg-green-500/10 text-green-600 rounded-2xl font-black text-sm uppercase text-center border border-green-500/20">
+                                              {t('item_arrived')}
+                                            </div>
+                                            
+                                            <form onSubmit={(e) => {
+                                              setReviewState({...reviewState, transactionId: t.id});
+                                              handleSubmitReview(e);
+                                            }} className="space-y-4 pt-4 border-t border-black/[0.05]">
+                                              <h5 className="text-sm font-black uppercase tracking-widest text-ios-gray">{t('write_review')}</h5>
+                                              <div className="flex gap-2">
+                                                {[1, 2, 3, 4, 5].map(star => (
+                                                  <button 
+                                                    key={star}
+                                                    type="button"
+                                                    onClick={() => setReviewState({...reviewState, rating: star, transactionId: t.id})}
+                                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${reviewState.rating >= star ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-ios-secondary text-ios-gray'}`}
+                                                  >
+                                                    <Star size={18} fill={reviewState.rating >= star ? 'currentColor' : 'none'} />
+                                                  </button>
+                                                ))}
+                                              </div>
+                                              <textarea 
+                                                required
+                                                placeholder={t('placeholder_desc')}
+                                                className="rm-input-lg !py-3 !text-sm resize-none"
+                                                rows={2}
+                                                value={reviewState.transactionId === t.id ? reviewState.comment : ''}
+                                                onChange={(e) => setReviewState({...reviewState, comment: e.target.value, transactionId: t.id})}
+                                              />
+                                              <button type="submit" className="ios-btn-primary w-full py-4 text-sm">{t('submit_review')}</button>
+                                            </form>
+                                          </div>
                                         )}
                                       </>
                                     )}
@@ -1638,71 +1797,98 @@ export default function App() {
               className="space-y-8"
             >
               <motion.div 
-                animate={{ y: showHeader ? 0 : -200 }}
+                animate={{ y: showHeader ? 0 : -300 }}
                 transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className="sticky top-0 md:top-20 z-40 bg-white/90 backdrop-blur-2xl -mx-6 px-6 py-4 flex flex-col gap-4 border-b border-black/[0.05] shadow-sm"
+                className="sticky top-0 md:top-20 z-40 bg-white/95 backdrop-blur-2xl -mx-6 px-6 py-4 flex flex-col gap-4 border-b border-black/[0.05] shadow-sm"
               >
                 <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-3">
-                      <h2 className="text-2xl sm:text-3xl font-black tracking-tight">{t('vetrina')}</h2>
-                      <button 
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                       <button 
                         onClick={() => requireAuth('sell')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-orange-500/20 active:scale-95 transition-all"
+                        className="w-8 h-8 flex items-center justify-center bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl shadow-lg shadow-orange-500/20 active:scale-90 transition-all flex-shrink-0"
                       >
-                        <PlusCircle size={14} />
-                        {t('sell')}
+                        <Plus size={20} strokeWidth={3} />
                       </button>
+                      <h2 className="text-xl sm:text-2xl font-black tracking-tight">{t('vetrina')}</h2>
                     </div>
-                    <p className="text-ios-gray text-xs font-medium">{t('vetrina_desc')}</p>
                   </div>
-                  <button onClick={() => setView('home')} className="p-2 hover:bg-black/5 rounded-full transition-colors">
-                    <X size={28} />
+                  <button onClick={() => setView('home')} className="p-1.5 hover:bg-black/5 rounded-full transition-colors text-ios-gray">
+                    <X size={24} />
+                  </button>
+                </div>
+
+                {/* Search Bar - Prominent */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1 group">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-ios-gray group-focus-within:text-brand-end transition-colors" size={18} />
+                    <input 
+                      type="text"
+                      placeholder={t('search_placeholder')}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-12 pr-4 py-3.5 bg-black/[0.04] focus:bg-white border-2 border-transparent focus:border-brand-end/20 rounded-2xl text-sm font-bold placeholder:text-ios-gray/50 transition-all outline-none"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={`p-3.5 rounded-2xl border-2 transition-all flex items-center justify-center ${showFilters ? 'bg-brand-end border-brand-end text-white shadow-lg' : 'bg-black/[0.04] border-transparent text-ios-gray'}`}
+                  >
+                    <SlidersHorizontal size={20} />
                   </button>
                 </div>
                 
-                <div className="flex gap-2 overflow-x-auto no-scrollbar py-2">
-                  {CATEGORIES.map(cat => (
-                    <button
-                      key={cat}
-                      onClick={() => {
-                        if (cat === 'Tutte') {
-                          setSelectedCategories(['Tutte']);
-                        } else {
-                          const newCats = selectedCategories.includes(cat)
-                            ? selectedCategories.filter(c => c !== cat)
-                            : [...selectedCategories.filter(c => c !== 'Tutte'), cat];
-                          setSelectedCategories(newCats.length === 0 ? ['Tutte'] : newCats);
-                        }
-                      }}
-                      className={`px-5 py-2 rounded-full text-xs font-black whitespace-nowrap transition-all duration-300 border ${
-                        selectedCategories.includes(cat) 
-                          ? 'bg-brand-end border-brand-end text-white shadow-md' 
-                          : 'bg-white border-black/[0.1] text-ios-gray hover:border-brand-end/30'
-                      }`}
+                <AnimatePresence>
+                  {showFilters && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden space-y-4"
                     >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-                
-                <div className="flex flex-col gap-2 px-1">
-                  <div className="flex justify-between items-center bg-black/[0.03] p-3 rounded-2xl border border-black/[0.03]">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-ios-gray">{t('max_price_label')}</span>
-                      <span className="text-lg font-black text-brand-end">€{maxPriceFilter === 5000 ? t('no_limit') : maxPriceFilter}</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="5000" 
-                      step="50"
-                      value={maxPriceFilter} 
-                      onChange={(e) => setMaxPriceFilter(parseInt(e.target.value))}
-                      className="w-1/2 accent-brand-end h-1 bg-black/10 rounded-lg appearance-none cursor-pointer"
-                    />
-                  </div>
-                </div>
+                      <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                        {CATEGORIES.map(cat => (
+                          <button
+                            key={cat}
+                            onClick={() => {
+                              if (cat === 'Tutte') {
+                                setSelectedCategories(['Tutte']);
+                              } else {
+                                const newCats = selectedCategories.includes(cat)
+                                  ? selectedCategories.filter(c => c !== cat)
+                                  : [...selectedCategories.filter(c => c !== 'Tutte'), cat];
+                                setSelectedCategories(newCats.length === 0 ? ['Tutte'] : newCats);
+                              }
+                            }}
+                            className={`px-4 py-2 rounded-xl text-[11px] font-black whitespace-nowrap transition-all duration-300 border ${
+                              selectedCategories.includes(cat) 
+                                ? 'bg-brand-end border-brand-end text-white shadow-md' 
+                                : 'bg-white border-black/[0.1] text-ios-gray hover:border-brand-end/30'
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+                      
+                      <div className="bg-black/[0.03] p-4 rounded-2xl border border-black/[0.03]">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-ios-gray">{t('max_price_label')}</span>
+                          <span className="text-base font-black text-brand-end">€{maxPriceFilter === 5000 ? t('no_limit') : maxPriceFilter}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max="5000" 
+                          step="50"
+                          value={maxPriceFilter} 
+                          onChange={(e) => setMaxPriceFilter(parseInt(e.target.value))}
+                          className="w-full accent-brand-end h-1.5 bg-black/10 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -1783,6 +1969,46 @@ export default function App() {
                   </button>
                 </div>
               </section>
+            </motion.div>
+          )}
+          {view === 'success' && (
+            <motion.div 
+              key="success"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="max-w-2xl mx-auto py-20 px-6 text-center space-y-12"
+            >
+              <div className="w-32 h-32 bg-green-500 rounded-[2.5rem] flex items-center justify-center mx-auto shadow-2xl shadow-green-500/20 transform rotate-6 hover:rotate-0 transition-transform duration-500">
+                <Check className="text-white" size={64} strokeWidth={4} />
+              </div>
+              
+              <div className="space-y-6">
+                <h2 className="text-5xl sm:text-7xl font-display font-black tracking-tight">{t('payment_success')}</h2>
+                <div className="space-y-4 max-w-lg mx-auto">
+                  <p className="text-ios-gray text-xl sm:text-2xl font-medium leading-relaxed">
+                    {t('order_shipped_within_5')}
+                  </p>
+                  <p className="text-ios-gray/60 text-base font-medium">
+                    {t('arrival_instructions')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-8">
+                <button 
+                  onClick={() => goTo('dashboard')}
+                  className="ios-btn-primary py-5 text-lg"
+                >
+                  {t('dashboard')}
+                </button>
+                <button 
+                  onClick={() => goTo('home')}
+                  className="px-8 py-5 bg-ios-secondary text-ios-label rounded-3xl font-black text-lg hover:bg-ios-secondary/80 transition-all border border-black/5"
+                >
+                  {t('home')}
+                </button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -2067,8 +2293,8 @@ export default function App() {
             <div className="space-y-6 text-center md:text-left">
               <h4 className="text-xs font-black uppercase tracking-widest text-ios-label">{t('support')}</h4>
               <ul className="space-y-3">
-                <li><span className="text-ios-gray hover:text-ios-label cursor-default transition-colors text-sm font-bold block">{t('help_center')}</span><span className="text-[10px] text-ios-gray/60 font-medium">Info & Tutorial App</span></li>
-                <li><span className="text-ios-gray hover:text-ios-label cursor-default transition-colors text-sm font-bold block">{t('security')}</span><span className="text-[10px] text-ios-gray/60 font-medium">Pagamenti Protetti & Verifica</span></li>
+                <li><span className="text-ios-gray hover:text-ios-label cursor-default transition-colors text-sm font-bold block">{t('help_center')}</span><span className="text-[10px] text-ios-gray/60 font-medium">{t('help_desc')}</span></li>
+                <li><span className="text-ios-gray hover:text-ios-label cursor-default transition-colors text-sm font-bold block">{t('security')}</span><span className="text-[10px] text-ios-gray/60 font-medium">{t('security_desc')}</span></li>
                 <li><button onClick={() => alert("Sezione Contatti in arrivo...")} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-bold">{t('contacts')}</button></li>
               </ul>
             </div>
@@ -2078,11 +2304,11 @@ export default function App() {
               <ul className="space-y-3 text-center md:text-left">
                 <li className="space-y-1">
                   <span className="text-ios-gray hover:text-ios-label cursor-default transition-colors text-sm font-bold block">{t('terms')}</span>
-                  <p className="text-[10px] text-ios-gray/60 leading-tight">Regole di transazione, vendita e inserimento dati.</p>
+                  <p className="text-[10px] text-ios-gray/60 leading-tight">{t('terms_desc')}</p>
                 </li>
                 <li className="space-y-1">
                   <span className="text-ios-gray hover:text-ios-label cursor-default transition-colors text-sm font-bold block">{t('privacy')}</span>
-                  <p className="text-[10px] text-ios-gray/60 leading-tight">Trattamento dati GDPR, finalità e modalità.</p>
+                  <p className="text-[10px] text-ios-gray/60 leading-tight">{t('privacy_desc')}</p>
                 </li>
               </ul>
             </div>
@@ -2092,7 +2318,7 @@ export default function App() {
             <p className="text-ios-gray text-[10px] font-black uppercase tracking-[0.2em]">© 2026 REMATCH MARKETPLACE. {t('rights_reserved')}.</p>
             <div className="flex items-center gap-3 px-5 py-2.5 bg-ios-secondary/50 rounded-2xl text-ios-gray text-[10px] font-bold uppercase tracking-widest border border-black/[0.02]">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              Sistemi Operativi Attivi
+              {t('active_systems')}
             </div>
           </div>
         </div>
