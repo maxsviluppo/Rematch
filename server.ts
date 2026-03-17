@@ -105,9 +105,7 @@ async function initDb() {
         buyer_id TEXT,
         seller_id TEXT,
         item_id INTEGER REFERENCES items(id),
-        status TEXT DEFAULT 'checkout', -- checkout, paid, shipping, shipped, delivered, completed, cancelled
-        
-        -- Buyer Shipping Info
+        status TEXT DEFAULT 'checkout',
         buyer_name TEXT,
         buyer_surname TEXT,
         buyer_email TEXT,
@@ -115,26 +113,23 @@ async function initDb() {
         buyer_address TEXT,
         buyer_city TEXT,
         buyer_cap TEXT,
-        
-        -- Snapshot Data for History
-        title TEXT,
-        price DECIMAL(10,2),
-        category TEXT,
-        image_url TEXT,
-        images JSONB DEFAULT '[]'::jsonb,
-        
-        -- Shipping Data
         tracking_id TEXT,
         courier TEXT,
         shipping_deadline TIMESTAMPTZ,
         shipped_at TIMESTAMPTZ,
-        
-        -- Payout Info
         seller_iban TEXT,
-        
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+    `);
+
+    // Ensure snapshot columns exist in transactions (for existing DBs)
+    await client.query(`
+      ALTER TABLE transactions ADD COLUMN IF NOT EXISTS title TEXT;
+      ALTER TABLE transactions ADD COLUMN IF NOT EXISTS price DECIMAL(10,2);
+      ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category TEXT;
+      ALTER TABLE transactions ADD COLUMN IF NOT EXISTS image_url TEXT;
+      ALTER TABLE transactions ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'::jsonb;
     `);
 
     client.release();
@@ -319,7 +314,13 @@ async function startServer() {
           buyer_address, buyer_city, buyer_cap, 
           shipping_deadline, status,
           title, price, category, image_url, images
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'paid', $13, $14, $15, $16, $17)
+        ) VALUES (
+          $1::integer, $2, $3, $4::integer, 
+          $5, $6, $7, $8, 
+          $9, $10, $11, 
+          $12::timestamptz, 'paid',
+          $13, $14::numeric, $15, $16, $17::jsonb
+        )
         RETURNING id
       `, [
         actualProposalId, buyer_id, seller_id, item_id,
@@ -348,11 +349,10 @@ async function startServer() {
     try {
       const { userId } = req.params;
       const result = await pool.query(`
-        SELECT t.*, i.title, i.price, i.image_url 
-        FROM transactions t
-        JOIN items i ON t.item_id = i.id
-        WHERE t.buyer_id = $1 OR t.seller_id = $2
-        ORDER BY t.created_at DESC
+        SELECT * 
+        FROM transactions
+        WHERE buyer_id = $1 OR seller_id = $2
+        ORDER BY created_at DESC
       `, [userId, userId]);
       res.json(result.rows);
     } catch (error: any) {
