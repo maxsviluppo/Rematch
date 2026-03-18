@@ -228,12 +228,18 @@ export default function App() {
 
   const fetchUserProfile = async (userId: string) => {
     // Proactively set user from session metadata if possible
-    if (session?.user?.user_metadata?.nome) {
-      setCurrentUser({ id: userId, nome: session.user.user_metadata.nome });
+    let currentSession: any = null;
+    await supabase.auth.getSession().then(({ data: { session } }) => {
+      currentSession = session;
+    });
+
+    const metaNome = currentSession?.user?.user_metadata?.nome;
+    if (metaNome) {
+      setCurrentUser({ id: userId, nome: metaNome });
     }
 
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('users')
         .select('nome')
         .eq('id', userId)
@@ -241,11 +247,21 @@ export default function App() {
 
       if (data?.nome) {
         setCurrentUser({ id: userId, nome: data.nome });
+      } else if (metaNome) {
+        // If not in table but have metadata, try to insert it (resilience)
+        await supabase.from('users').insert([{
+          id: userId,
+          nome: metaNome,
+          username: metaNome.toLowerCase().replace(/\s/g, ''),
+          email: currentSession?.user?.email
+        }]).select();
+        setCurrentUser({ id: userId, nome: metaNome });
       } else if (!currentUser) {
         setCurrentUser({ id: userId, nome: 'Utente' });
       }
     } catch (error) {
-      if (!currentUser) {
+      console.error("fetchUserProfile error:", error);
+      if (!currentUser && !metaNome) {
         setCurrentUser({ id: userId, nome: 'Utente' });
       }
     }
@@ -1528,50 +1544,56 @@ export default function App() {
                   </div>
                 </div>
 
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  const target = e.target as any;
-                  handleCheckout({
-                    name: target.name.value,
-                    surname: target.surname.value,
-                    email: target.email.value,
-                    phone: target.phone.value,
-                    address: target.address.value,
-                    city: target.city.value,
-                    cap: target.cap.value
-                  });
-                }} className="space-y-4 sm:space-y-6">
-                  <div className="flex justify-end">
-                    <button 
-                      type="button" 
-                      onClick={(e) => {
-                        const form = (e.target as HTMLElement).closest('form');
-                        if (form) {
-                          (form.elements.namedItem('name') as HTMLInputElement).value = 'Mario';
-                          (form.elements.namedItem('surname') as HTMLInputElement).value = 'Rossi';
-                          (form.elements.namedItem('email') as HTMLInputElement).value = 'mario.rossi@example.com';
-                          (form.elements.namedItem('phone') as HTMLInputElement).value = '+39 333 1234567';
-                          (form.elements.namedItem('address') as HTMLInputElement).value = 'Via Roma 123';
-                          (form.elements.namedItem('city') as HTMLInputElement).value = 'Milano';
-                          (form.elements.namedItem('cap') as HTMLInputElement).value = '20121';
-                        }
-                      }}
-                      className="text-[10px] font-black uppercase tracking-widest text-brand-start bg-brand-start/10 px-3 py-1.5 rounded-lg hover:bg-brand-start/20 transition-all border border-brand-start/20"
-                    >
-                      ⚡ Simula Dati Demo
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                    <input name="name" required placeholder={t('name')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
-                    <input name="surname" required placeholder={t('surname')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
-                  </div>
-                  <input name="email" type="email" required placeholder="Email" className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
-                  <input name="phone" required placeholder={t('phone')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
-                  <input name="address" required placeholder={t('address')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                    <input name="city" required placeholder={t('city')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
-                    <input name="cap" required placeholder={t('cap')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
-                  </div>
+                 <form onSubmit={(e) => {
+                   e.preventDefault();
+                   const form = e.currentTarget;
+                   const getVal = (name: string) => (form.elements.namedItem(name) as HTMLInputElement)?.value || '';
+                   
+                   handleCheckout({
+                     name: getVal('name'),
+                     surname: getVal('surname'),
+                     email: getVal('email'),
+                     phone: getVal('phone'),
+                     address: getVal('address'),
+                     city: getVal('city'),
+                     cap: getVal('cap')
+                   });
+                 }} className="space-y-4 sm:space-y-6">
+                   <div className="flex justify-end">
+                     <button 
+                       type="button" 
+                       onClick={(e) => {
+                         const form = (e.target as HTMLElement).closest('form');
+                         if (form) {
+                           const setVal = (name: string, val: string) => {
+                             const el = form.elements.namedItem(name) as HTMLInputElement;
+                             if (el) el.value = val;
+                           };
+                           setVal('name', 'Mario');
+                           setVal('surname', 'Rossi');
+                           setVal('email', 'mario.rossi@example.com');
+                           setVal('phone', '+39 333 1234567');
+                           setVal('address', 'Via Roma 123');
+                           setVal('city', 'Milano');
+                           setVal('cap', '20121');
+                         }
+                       }}
+                       className="text-[10px] font-black uppercase tracking-widest text-brand-start bg-brand-start/10 px-3 py-1.5 rounded-lg hover:bg-brand-start/20 transition-all border border-brand-start/20"
+                     >
+                       ⚡ Simula Dati Demo
+                     </button>
+                   </div>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                     <input name="name" required placeholder={t('name')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
+                     <input name="surname" required placeholder={t('surname')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
+                   </div>
+                   <input name="email" type="email" required placeholder="Email" className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
+                   <input name="phone" required placeholder={t('phone')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
+                   <input name="address" required placeholder={t('address')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                     <input name="city" required placeholder={t('city')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
+                     <input name="cap" required placeholder={t('cap')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
+                   </div>
                   <button 
                     type="submit" 
                     disabled={loading}

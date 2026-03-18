@@ -31,13 +31,25 @@ export default function Auth({ onLogin }: AuthProps) {
         if (signInError) throw signInError;
 
         if (data.user) {
-          const { data: profile } = await supabase
+          // Fetch or ensure profile exists
+          const { data: profile, error: profileError } = await supabase
             .from('users')
             .select('nome')
             .eq('id', data.user.id)
             .single();
 
-          onLogin(data.user.id, profile?.nome || email.split('@')[0]);
+          // If profile doesn't exist, we might want to create it now if we have metadata
+          let finalNome = profile?.nome || data.user.user_metadata?.nome || email.split('@')[0];
+          
+          if (!profile && data.user) {
+            await supabase.from('users').insert([{
+              id: data.user.id,
+              nome: finalNome,
+              username: finalNome.toLowerCase().replace(/\s/g, '')
+            }]).select().single();
+          }
+
+          onLogin(data.user.id, finalNome);
         }
       } else {
         // Register
@@ -58,17 +70,30 @@ export default function Auth({ onLogin }: AuthProps) {
         if (signUpError) throw signUpError;
 
         if (data.user) {
-          // Success registration -> Auto login
-          onLogin(data.user.id, nome);
+          // Manually create profile in public.users to be sure
+          const { error: insertError } = await supabase.from('users').insert([{
+            id: data.user.id,
+            nome: nome,
+            username: nome.toLowerCase().replace(/\s/g, '')
+          }]);
+          
+          if (insertError) console.error('Error creating profile:', insertError);
+
+          if (!data.session) {
+            setError('Registrazione completata! Controlla la tua email per confermare l\'account prima di accedere.');
+          } else {
+            onLogin(data.user.id, nome);
+          }
         }
       }
     } catch (err: any) {
-      if (isLogin && err.message?.toLowerCase().includes('invalid')) {
-        // Se cerca di loggarsi ma non ha un account / sbaglia, lo mandiamo alla registrazione
+      const msg = err.message?.toLowerCase() || '';
+      if (isLogin && (msg.includes('invalid login credentials') || msg.includes('email not confirmed'))) {
+        setError(msg.includes('confirmed') ? 'Conferma la tua email prima di accedere!' : 'Email o password errata.');
+      } else if (isLogin && msg.includes('user not found')) {
         setIsLogin(false);
-        setError('Nessun account trovato o password errata. Registrati!');
-      } else if (!isLogin && err.message?.toLowerCase().includes('already registered')) {
-        // Se cerca di registrarsi ma ha già un account, lo mandiamo al login
+        setError('Nessun account trovato con questa email. Registrati!');
+      } else if (!isLogin && msg.includes('already registered')) {
         setIsLogin(true);
         setError('Hai già un account! Effettua il login.');
       } else {

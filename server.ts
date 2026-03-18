@@ -123,6 +123,17 @@ async function initDb() {
       );
     `);
 
+    // 7. Create users table (for public profiles)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        nome TEXT,
+        username TEXT,
+        email TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     // Ensure snapshot columns exist in transactions (for existing DBs)
     await client.query(`
       ALTER TABLE transactions ADD COLUMN IF NOT EXISTS title TEXT;
@@ -298,14 +309,19 @@ async function startServer() {
   // Transactions API
   app.post("/api/transactions", async (req, res) => {
     try {
-      const { proposal_id, buyer_id, seller_id, item_id, title, price, category, image_url, images, shipping_details } = req.body;
+      let { proposal_id, buyer_id, seller_id, item_id, title, price, category, image_url, images, shipping_details } = req.body;
+      
+      const parsedImages = typeof images === 'string' ? JSON.parse(images) : (images || []);
+      const numPrice = parseFloat(price as any) || 0;
+      const numItemId = parseInt(item_id as any) || 0;
+      const numProposalId = parseInt(proposal_id as any) || 0;
       
       // Calculate 5 days deadline
       const deadline = new Date();
       deadline.setDate(deadline.getDate() + 5);
 
       // Handle proposal_id 0 (direct purchase) by setting it to null
-      const actualProposalId = (proposal_id && proposal_id !== 0) ? proposal_id : null;
+      const actualProposalId = (numProposalId && numProposalId !== 0) ? numProposalId : null;
 
       const result = await pool.query(`
         INSERT INTO transactions (
@@ -323,11 +339,11 @@ async function startServer() {
         )
         RETURNING id
       `, [
-        actualProposalId, buyer_id, seller_id, item_id,
+        actualProposalId, buyer_id, seller_id, numItemId,
         shipping_details.name, shipping_details.surname, shipping_details.email, shipping_details.phone,
         shipping_details.address, shipping_details.city, shipping_details.cap,
         deadline,
-        title, price, category, image_url, JSON.stringify(images || [])
+        title, numPrice, category, image_url, JSON.stringify(parsedImages)
       ]);
 
       // Update proposal status if exists
@@ -336,7 +352,7 @@ async function startServer() {
       }
       
       // Update item status
-      await pool.query("UPDATE items SET status = 'sold' WHERE id = $1", [item_id]);
+      await pool.query("UPDATE items SET status = 'sold' WHERE id = $1", [numItemId]);
 
       res.json({ id: result.rows[0].id });
     } catch (error: any) {

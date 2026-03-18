@@ -1,0 +1,334 @@
+
+> react-example@0.0.0 dev
+> tsx --watch server.ts
+
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ prevent committing .env to code: https://dotenvx.com/precommit
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  suppress all logs with { quiet: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ encrypt with Dotenvx: https://dotenvx.com
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+Connecting to DB...
+DB Connected!
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  load multiple .env files with { path: ['.env.local', '.env'] }
+Connecting to DB...
+DB Connected!
+SUCCESS: Connected to Supabase PostgreSQL and ensured schema exists
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøí´©Å auth for agents: https://vestauth.com
+Connecting to DB...
+DB Connected!
+SUCCESS: Connected to Supabase PostgreSQL and ensured schema exists
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøí´©Å auth for agents: https://vestauth.com
+Connecting to DB...
+DB Connected!
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøí´©Å auth for agents: https://vestauth.com
+Connecting to DB...
+DB Connected!
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+Connecting to DB...
+DB Connected!
+SUCCESS: Connected to Supabase PostgreSQL and ensured schema exists
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+Connecting to DB...
+DB Connected!
+SUCCESS: Connected to Supabase PostgreSQL and ensured schema exists
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+Connecting to DB...
+DB Connected!
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+Connecting to DB...
+DB Connected!
+SUCCESS: Connected to Supabase PostgreSQL and ensured schema exists
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  suppress all logs with { quiet: true }
+Connecting to DB...
+DB Connected!
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+Connecting to DB...
+DB Connected!
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøí´©Å auth for agents: https://vestauth.com
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøí´©Å auth for agents: https://vestauth.com
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  load multiple .env files with { path: ['.env.local', '.env'] }
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøí´©Å auth for agents: https://vestauth.com
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ prevent building .env in docker: https://dotenvx.com/prebuild
+Connecting to DB...
+DB Connected!
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ encrypt with Dotenvx: https://dotenvx.com
+Connecting to DB...
+DB Connected!
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  suppress all logs with { quiet: true }
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  enable debug logging with { debug: true }
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ prevent building .env in docker: https://dotenvx.com/prebuild
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ prevent building .env in docker: https://dotenvx.com/prebuild
+Connecting to DB...
+DB Connected!
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  load multiple .env files with { path: ['.env.local', '.env'] }
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  load multiple .env files with { path: ['.env.local', '.env'] }
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  write to custom object with { processEnv: myObject }
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  write to custom object with { processEnv: myObject }
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜí´©Å secrets for agents: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ prevent building .env in docker: https://dotenvx.com/prebuild
+Connecting to DB...
+DB Connected!
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜí´©Å secrets for agents: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  enable debug logging with { debug: true }
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ prevent committing .env to code: https://dotenvx.com/precommit
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ prevent building .env in docker: https://dotenvx.com/prebuild
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  write to custom object with { processEnv: myObject }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒñû agentic secret storage: https://dotenvx.com/as2
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ encrypt with Dotenvx: https://dotenvx.com
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  enable debug logging with { debug: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜí´©Å secrets for agents: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒñû agentic secret storage: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  enable debug logging with { debug: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜí´©Å secrets for agents: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ prevent building .env in docker: https://dotenvx.com/prebuild
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+Connecting to DB...
+Server running on http://localhost:5173
+DB Connected!
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  load multiple .env files with { path: ['.env.local', '.env'] }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  enable debug logging with { debug: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜí´©Å secrets for agents: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+Connecting to DB...
+DB Connected!
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  enable debug logging with { debug: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  load multiple .env files with { path: ['.env.local', '.env'] }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  write to custom object with { processEnv: myObject }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  enable debug logging with { debug: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  load multiple .env files with { path: ['.env.local', '.env'] }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒñû agentic secret storage: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  suppress all logs with { quiet: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒñû agentic secret storage: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒñû agentic secret storage: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  enable debug logging with { debug: true }
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒñû agentic secret storage: https://dotenvx.com/as2
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøí´©Å auth for agents: https://vestauth.com
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒñû agentic secret storage: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ prevent building .env in docker: https://dotenvx.com/prebuild
+Connecting to DB...
+DB Connected!
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøí´©Å auth for agents: https://vestauth.com
+Connecting to DB...
+DB Connected!
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜÖ´©Å  load multiple .env files with { path: ['.env.local', '.env'] }
+Connecting to DB...
+Server running on http://localhost:5173
+DB Connected!
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ prevent building .env in docker: https://dotenvx.com/prebuild
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒñû agentic secret storage: https://dotenvx.com/as2
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ encrypt with Dotenvx: https://dotenvx.com
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ÔÜí´©Å secrets for agents: https://dotenvx.com/as2
+Connecting to DB...
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒöÉ encrypt with Dotenvx: https://dotenvx.com
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
+[dotenv@17.3.1] injecting env (4) from .env -- tip: ­ƒøí´©Å auth for agents: https://vestauth.com
+Connecting to DB...
+Server running on http://localhost:5173
+c[32mRestarting 'server.ts'[39m
