@@ -572,31 +572,39 @@ export default function App() {
   const fetchUserRelatedData = async () => {
     if (!session?.user?.id) return;
     try {
-      // Parallel fetch for speed
+      const userId = session.user.id;
+
+      // Parallel fetch for speed — all via Supabase directly (no Express dependency)
       const [reqsRes, favsRes, transRes] = await Promise.all([
-        supabase.from('requests').select('*').eq('buyer_id', session.user.id).eq('status', 'active'),
-        supabase.from('favorites').select('item_id, items(*)').eq('user_id', session.user.id),
-        fetch(`/api/transactions/${session.user.id}`).then(r => r.ok ? r.json() : [])
+        supabase.from('requests').select('*').eq('buyer_id', userId).eq('status', 'active'),
+        supabase.from('favorites').select('item_id, items(*)').eq('user_id', userId),
+        supabase
+          .from('transactions')
+          .select('*')
+          .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+          .order('created_at', { ascending: false })
       ]);
 
       if (reqsRes.data) {
         setUserRequests(reqsRes.data);
         // Fetch proposals for these requests
-        const { data: props } = await supabase
-          .from('proposals')
-          .select('*, items(*)')
-          .eq('status', 'pending')
-          .in('request_id', reqsRes.data.map(r => r.id));
-        
-        if (props) {
-          setProposals(props.map(p => ({
-            ...p.items,
-            proposal_id: p.id,
-            request_id: p.request_id,
-            item_id: p.item_id,
-            status: p.status,
-            expires_at: p.expires_at
-          })));
+        if (reqsRes.data.length > 0) {
+          const { data: props } = await supabase
+            .from('proposals')
+            .select('*, items(*)')
+            .eq('status', 'pending')
+            .in('request_id', reqsRes.data.map(r => r.id));
+          
+          if (props) {
+            setProposals(props.map(p => ({
+              ...p.items,
+              proposal_id: p.id,
+              request_id: p.request_id,
+              item_id: p.item_id,
+              status: p.status,
+              expires_at: p.expires_at
+            })));
+          }
         }
       }
 
@@ -608,7 +616,7 @@ export default function App() {
         setFavorites(favItems);
       }
 
-      setTransactions(transRes || []);
+      setTransactions(transRes.data || []);
     } catch (err) {
       console.error("User data fetch error:", err);
     }

@@ -154,6 +154,8 @@ async function initDb() {
       ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category TEXT;
       ALTER TABLE transactions ADD COLUMN IF NOT EXISTS image_url TEXT;
       ALTER TABLE transactions ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE transactions ADD COLUMN IF NOT EXISTS review_rating INTEGER;
+      ALTER TABLE transactions ADD COLUMN IF NOT EXISTS review_comment TEXT;
     `);
 
     client.release();
