@@ -972,9 +972,15 @@ export default function App() {
     setLoading(true);
     console.log("Starting Checkout Simulation...", { activeProposal, shippingDetails });
     try {
-      const response = await fetch('/api/transactions', {
+      const baseUrl = window.location.origin;
+      const checkoutUrl = baseUrl.includes('localhost') ? '/api/transactions' : `${baseUrl}/api/transactions`;
+      
+      const response = await fetch(checkoutUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({
           proposal_id: activeProposal.proposal_id,
           buyer_id: currentUser.id,
@@ -990,8 +996,14 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Errore durante il checkout');
+        let errorMessage = 'Errore durante il checkout';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          errorMessage = `Server Error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       console.log("Checkout Success! Redirecting to success page...");

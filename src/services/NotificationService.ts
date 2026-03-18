@@ -47,10 +47,14 @@ class NotificationService {
 
   private showBrowserNotification(title: string, body: string) {
     if (Notification.permission === "granted") {
-      new Notification(title, {
-        body,
-        icon: "/favicon.png",
-      });
+      try {
+        new Notification(title, {
+          body,
+          icon: "/favicon.png",
+        });
+      } catch (e) {
+        console.warn("Could not show browser notification:", e);
+      }
     }
   }
 
