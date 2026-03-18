@@ -1768,22 +1768,31 @@ export default function App() {
                     <p className="text-brand-start font-black text-lg">{activeProposal.price}€</p>
                   </div>
                 </div>
+                  <form 
+                    noValidate 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const form = e.currentTarget;
+                      const getVal = (name: string) => (form.elements.namedItem(name) as HTMLInputElement)?.value || '';
+                      
+                      const details = {
+                        name: getVal('name'),
+                        surname: getVal('surname'),
+                        email: getVal('email'),
+                        phone: getVal('phone'),
+                        address: getVal('address'),
+                        city: getVal('city'),
+                        cap: getVal('cap')
+                      };
 
-                 <form onSubmit={(e) => {
-                   e.preventDefault();
-                   const form = e.currentTarget;
-                   const getVal = (name: string) => (form.elements.namedItem(name) as HTMLInputElement)?.value || '';
-                   
-                   handleCheckout({
-                     name: getVal('name'),
-                     surname: getVal('surname'),
-                     email: getVal('email'),
-                     phone: getVal('phone'),
-                     address: getVal('address'),
-                     city: getVal('city'),
-                     cap: getVal('cap')
-                   });
-                 }} className="space-y-4 sm:space-y-6">
+                      // Basic validation check before calling handleCheckout
+                      if (!details.name || !details.email || !details.address) {
+                        alert("Per favore completa i campi obbligatori.");
+                        return;
+                      }
+
+                      handleCheckout(details);
+                  }} className="space-y-4 sm:space-y-6">
                    <div className="flex justify-end">
                      <button 
                        type="button" 
@@ -2032,36 +2041,27 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* 2. My Sales (Active) */}
+                  {/* 3. In Vendita (I miei prodotti caricati) */}
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">Vendite</h3>
-                      <span className="text-ios-gray text-xs font-medium">{transactions.filter(t => t.seller_id === currentUser?.id).length} attive</span>
+                      <h3 className="rm-section-title">{t('in_sale')}</h3>
+                      <span className="text-ios-gray text-xs font-medium">{items.filter(i => i.seller_id === (session?.user?.id || '')).length} prodotti</span>
                     </div>
-
-                    {transactions.filter(t => t.seller_id === currentUser?.id).length === 0 ? (
-                      <div className="ios-card p-8 text-center bg-ios-secondary/10 border-2 border-dashed border-black/[0.03]">
-                        <p className="text-ios-gray text-xs">Nessuna vendita attiva.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-6">
-                        {transactions.filter(t => t.seller_id === currentUser?.id).map(tr => (
-                          <TransactionCard 
-                            key={tr.id} 
-                            tr={tr} 
-                            isSeller={true} 
-                            t={t} 
-                            currentUser={currentUser}
-                            loading={loading}
-                            handleShip={handleShip}
-                            handleConfirmArrival={handleConfirmArrival}
-                            setReviewState={setReviewState}
-                            reviewState={reviewState}
-                            handleSubmitReview={handleSubmitReview}
-                          />
-                        ))}
-                      </div>
-                    )}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                      {items.filter(i => i.seller_id === (session?.user?.id || '')).length === 0 ? (
+                        <p className="col-span-full text-xs text-ios-gray py-8 text-center border-2 border-dashed rounded-3xl">{t('no_saved_items')}</p>
+                      ) : (
+                        items.filter(i => i.seller_id === (session?.user?.id || '')).map((item) => (
+                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-2 group cursor-pointer hover:shadow-xl transition-all">
+                            <div className="aspect-square rounded-2xl overflow-hidden mb-2">
+                              <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                            </div>
+                            <p className="text-[10px] font-bold truncate px-1">{item.title}</p>
+                            <p className="text-[10px] text-brand-end font-black px-1">€{item.price}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
 
                   {/* 4. My Purchases (Active) */}
@@ -2091,13 +2091,65 @@ export default function App() {
                             reviewState={reviewState}
                             handleSubmitReview={handleSubmitReview}
                           />
-
                         ))}
                       </div>
                     )}
                   </div>
 
+                  {/* 5. My Sales (Transactional) */}
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="rm-section-title">Vendite Attive</h3>
+                      <span className="text-ios-gray text-xs font-medium">{transactions.filter(t => t.seller_id === currentUser?.id).length} attive</span>
+                    </div>
 
+                    {transactions.filter(t => t.seller_id === currentUser?.id).length === 0 ? (
+                      <div className="ios-card p-8 text-center bg-ios-secondary/10 border-2 border-dashed border-black/[0.03]">
+                        <p className="text-ios-gray text-xs">Nessuna vendita attiva.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-6">
+                        {transactions.filter(t => t.seller_id === currentUser?.id).map(tr => (
+                          <TransactionCard 
+                            key={tr.id} 
+                            tr={tr} 
+                            isSeller={true} 
+                            t={t} 
+                            currentUser={currentUser}
+                            loading={loading}
+                            handleShip={handleShip}
+                            handleConfirmArrival={handleConfirmArrival}
+                            setReviewState={setReviewState}
+                            reviewState={reviewState}
+                            handleSubmitReview={handleSubmitReview}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 6. Saved Items */}
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="rm-section-title">{t('saved_items')}</h3>
+                      <span className="text-ios-gray text-xs font-medium">{favorites.length} salvati</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                      {favorites.length === 0 ? (
+                        <p className="col-span-full text-xs text-ios-gray py-8 text-center border-2 border-dashed rounded-3xl">{t('no_saved_items')}</p>
+                      ) : (
+                        favorites.map((item) => (
+                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-2 group cursor-pointer relative hover:shadow-xl transition-all">
+                            <div className="aspect-square rounded-2xl overflow-hidden mb-2">
+                              <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                            </div>
+                            <button onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }} className="absolute top-3 right-3 p-2 bg-red-500 text-white rounded-full shadow-lg hover:scale-110 transition-all"><Heart size={14} fill="currentColor" /></button>
+                            <p className="text-[10px] font-bold truncate px-1">{item.title}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
 
                   {/* 7. Final - Logout and Delete */}
                   <div className="pt-12 flex flex-col sm:flex-row gap-4">
@@ -2120,43 +2172,6 @@ export default function App() {
 
                 <div className="space-y-6">
 
-                  <div className="ios-card p-5 sm:p-6 space-y-5">
-                    <h3 className="rm-section-title">{t('in_sale')}</h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      {items.filter(i => i.seller_id === (session?.user?.id || '')).length === 0 ? (
-                        <p className="col-span-2 text-xs text-ios-gray py-4 text-center border border-dashed rounded-xl">{t('no_saved_items')}</p>
-                      ) : (
-                        items.filter(i => i.seller_id === (session?.user?.id || '')).map((item) => (
-                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-2 group cursor-pointer">
-                            <div className="aspect-square rounded-xl overflow-hidden mb-2">
-                              <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
-                            </div>
-                            <p className="text-[10px] font-bold truncate px-1">{item.title}</p>
-                            <p className="text-[10px] text-brand-end font-black px-1">€{item.price}</p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="ios-card p-5 sm:p-6 space-y-5">
-                    <h3 className="rm-section-title">{t('saved_items')}</h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      {favorites.length === 0 ? (
-                        <p className="col-span-2 text-xs text-ios-gray py-4 text-center border border-dashed rounded-xl">{t('no_saved_items')}</p>
-                      ) : (
-                        favorites.map((item) => (
-                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-2 group cursor-pointer relative">
-                            <div className="aspect-square rounded-xl overflow-hidden mb-2">
-                              <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
-                            </div>
-                            <button onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }} className="absolute top-3 right-3 p-1.5 bg-red-500 text-white rounded-full shadow-lg"><Heart size={10} fill="currentColor" /></button>
-                            <p className="text-[10px] font-bold truncate px-1">{item.title}</p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
 
                   <div className="ios-card p-5 sm:p-6 space-y-5">
                     <h3 className="rm-section-title">{t('how_it_works')}</h3>
