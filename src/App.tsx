@@ -287,11 +287,11 @@ export default function App() {
 
   const [view, setView] = useState<'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'auth' | 'success'>('home');
   const goTo = (v: 'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'auth' | 'success') => {
-    try { window.scrollTo({ top: 0, left: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+    window.scrollTo(0, 0);
     setView(v);
   };
   const requireAuth = (targetView: 'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'success') => {
-    try { window.scrollTo({ top: 0, left: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+    window.scrollTo(0, 0);
     if (!session) { setView('auth'); } else { setView(targetView); }
   };
   const [items, setItems] = useState<Item[]>([]);
@@ -406,7 +406,7 @@ export default function App() {
         // Automatically close auth panel and go to home if logged in
         if (view === 'auth') {
           setView('home');
-          try { window.scrollTo({ top: 0, left: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+          window.scrollTo(0, 0);
         }
       } else {
         setCurrentUser(null);
@@ -648,7 +648,15 @@ export default function App() {
       setTransactions([]);
       setUserRequests([]);
       setView('home');
-      try { window.scrollTo({ top: 0, left: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+      try {
+        window.scrollTo(0, 0);
+      } catch (err) {
+        console.error("Logout error:", err);
+        // Force local logout even if server fails
+        setSession(null);
+        setCurrentUser(null);
+        setView('home');
+      }
     } catch (err) {
       console.error("Logout error:", err);
       // Force local logout even if server fails
@@ -1821,7 +1829,7 @@ export default function App() {
                      <input name="name" required placeholder={t('name')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
                      <input name="surname" required placeholder={t('surname')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
                    </div>
-                   <input name="email" type="email" required placeholder="Email" className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
+                   <input name="email" type="text" required placeholder="Email" className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
                    <input name="phone" required placeholder={t('phone')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
                    <input name="address" required placeholder={t('address')} className="w-full px-6 py-4 bg-ios-secondary/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-ios-blue/10 transition-all font-bold placeholder:text-ios-gray/40" />
                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
