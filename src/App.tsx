@@ -287,11 +287,11 @@ export default function App() {
 
   const [view, setView] = useState<'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'auth' | 'success'>('home');
   const goTo = (v: 'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'auth' | 'success') => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    try { window.scrollTo({ top: 0, left: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
     setView(v);
   };
   const requireAuth = (targetView: 'home' | 'sell' | 'buy' | 'dashboard' | 'checkout' | 'vetrina' | 'success') => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    try { window.scrollTo({ top: 0, left: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
     if (!session) { setView('auth'); } else { setView(targetView); }
   };
   const [items, setItems] = useState<Item[]>([]);
@@ -406,7 +406,7 @@ export default function App() {
         // Automatically close auth panel and go to home if logged in
         if (view === 'auth') {
           setView('home');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          try { window.scrollTo({ top: 0, left: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
         }
       } else {
         setCurrentUser(null);
@@ -648,7 +648,7 @@ export default function App() {
       setTransactions([]);
       setUserRequests([]);
       setView('home');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      try { window.scrollTo({ top: 0, left: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
     } catch (err) {
       console.error("Logout error:", err);
       // Force local logout even if server fails
