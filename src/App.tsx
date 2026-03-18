@@ -530,17 +530,36 @@ export default function App() {
     }
 
     try {
-      // Always use Supabase directly — no Express dependency
-      const { data, error: itemsError } = await supabase
-        .from('items')
-        .select('*')
-        .eq('status', 'available')
-        .order('created_at', { ascending: false })
-        .limit(50);
+      const now = new Date().toLocaleTimeString();
+      console.log(`[${now}] Attempting to fetch items...`);
       
-      if (itemsError) throw itemsError;
-      let allItems = data || [];
+      let allItems = [];
+      let fetchSource = 'Local API';
 
+      try {
+        // Step 1: Try Local Proxy first (faster and handles pool better)
+        const localRes = await fetch('/api/items', { signal: AbortSignal.timeout(5000) });
+        if (localRes.ok) {
+          allItems = await localRes.json();
+        } else {
+          throw new Error('Local API failed');
+        }
+      } catch (proxyErr) {
+        // Step 2: Fallback to Direct Supabase
+        console.warn(`[${now}] Local API unavailable, falling back to direct Supabase...`);
+        fetchSource = 'Supabase Direct';
+        const { data, error: itemsError } = await supabase
+          .from('items')
+          .select('*')
+          .eq('status', 'available')
+          .limit(25);
+        
+        if (itemsError) throw itemsError;
+        allItems = data || [];
+      }
+      
+      console.log(`[${now}] Found ${allItems.length} items from ${fetchSource}.`);
+      
       let filteredItems = allItems;
       if (debouncedSearchQuery || (!selectedCategories.includes('Tutte') && selectedCategories.length > 0) || maxPriceFilter < 5000) {
         filteredItems = filteredItems.filter((item: any) => {
@@ -584,6 +603,13 @@ export default function App() {
           .order('created_at', { ascending: false })
       ]);
 
+      console.log('=== DEBUG fetchUserRelatedData ===');
+      console.log('userId:', userId);
+      console.log('transactions → data:', transRes.data, ' error:', transRes.error);
+      console.log('sellerItems → data:', sellerItemsRes.data, ' error:', sellerItemsRes.error);
+      console.log('requests → data:', reqsRes.data, ' error:', reqsRes.error);
+      console.log('=================================');
+
       if (reqsRes.data) {
         setUserRequests(reqsRes.data);
         // Fetch proposals for these requests
@@ -617,6 +643,9 @@ export default function App() {
 
       setTransactions(transRes.data || []);
       setSellerItems(sellerItemsRes.data || []);
+      
+      if (transRes.error) console.error("Transactions Error:", transRes.error);
+      if (sellerItemsRes.error) console.error("SellerItems Error:", sellerItemsRes.error);
     } catch (err) {
       console.error("User data fetch error:", err);
     }
