@@ -10,6 +10,14 @@ import dotenv from "dotenv";
 dotenv.config();
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
+// Global error handlers
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
+
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +27,11 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false
   }
+});
+
+// Added error handler to prevent crash on idle client errors
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client:', err.message || err);
 });
 
 // Initialize Database (Schema should be created in Supabase dashboard or via initial migration)
@@ -189,7 +202,7 @@ async function startServer() {
         SELECT i.*, 
         (SELECT COUNT(*) FROM favorites f WHERE f.item_id = i.id) as LikeCount
         FROM items i 
-        WHERE 1=1
+        WHERE i.status = 'available'
       `;
       const filterParams: any[] = [];
       
@@ -354,6 +367,15 @@ async function startServer() {
       // Update item status
       await pool.query("UPDATE items SET status = 'sold' WHERE id = $1", [numItemId]);
 
+
+      // Notify seller of purchase
+      io.to(seller_id).emit("notification", {
+        title: "Prodotto Venduto!",
+        body: `Hai venduto "${title}". Hai 5 giorni per spedire il prodotto.`,
+        type: "sale",
+        data: { transaction_id: result.rows[0].id }
+      });
+
       res.json({ id: result.rows[0].id });
     } catch (error: any) {
       console.error("TRANSACTION ERROR:", error);
@@ -414,6 +436,20 @@ async function startServer() {
   app.post("/api/transactions/:id/confirm-arrival", async (req, res) => {
     try {
       await pool.query("UPDATE transactions SET status = 'delivered', updated_at = NOW() WHERE id = $1", [req.params.id]);
+      
+      // Get transaction details for notification
+      const trResult = await pool.query("SELECT * FROM transactions WHERE id = $1", [req.params.id]);
+      if (trResult.rows.length > 0) {
+        const trans = trResult.rows[0];
+        // Notify seller of arrival
+        io.to(trans.seller_id).emit("notification", {
+          title: "Consegna Confermata",
+          body: `L'acquirente ha confermato di aver ricevuto "${trans.title}". Il pagamento verrà elaborato.`,
+          type: "delivery_confirmed",
+          data: { transaction_id: trans.id }
+        });
+      }
+
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -606,6 +642,20 @@ async function startServer() {
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
+  });
+
+  app.get("/api/items", async (req, res) => {
+    try {
+      const result = await pool.query("SELECT * FROM items WHERE status = 'available' ORDER BY created_at DESC LIMIT 50");
+      res.json(result.rows);
+    } catch (error: any) {
+      console.error("API ITEMS ERROR:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok" });
   });
 
   // Stats API

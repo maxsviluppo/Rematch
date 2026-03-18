@@ -150,7 +150,11 @@ export const translations = {
     review_comment: "Commento",
     submit_review: "Invia Recensione",
     no_phone_notice: "Nota: Il numero di telefono non viene fornito per privacy. Usa la chat se necessario.",
-    bank_details: "Dati Bancari (Bonifico)"
+    bank_details: "Dati Bancari (Bonifico)",
+    success_title: "Operazione Riuscita!",
+    item_published_success: "Il tuo annuncio è stato pubblicato con successo.",
+    notifications_enabled_success: "Le notifiche sono state attivate con successo!",
+    close: "Chiudi"
   },
   en: {
     home: "Home",

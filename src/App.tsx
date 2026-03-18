@@ -121,6 +121,7 @@ export default function App() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState({ show: false, title: '', message: '' });
 
   // Form states
   const [newItem, setNewItem] = useState({
@@ -279,6 +280,10 @@ export default function App() {
     // Fetch user-specific data when user changes
     if (currentUser) {
       notificationService.init(currentUser.id);
+      notificationService.onNotification(() => {
+        console.log("Notification received, refreshing data...");
+        fetchData();
+      });
       fetchUserRelatedData();
     }
     
@@ -325,18 +330,28 @@ export default function App() {
     }
 
     try {
-      const { data: allItems, error: itemsError } = await supabase
-        .from('items')
-        .select('*')
-        .eq('status', 'available')
-        .order('created_at', { ascending: false })
-        .limit(50); 
+      // Try local API for better stability during DB issues
+      const localRes = await fetch('/api/items');
+      let allItems = [];
+      
+      if (localRes.ok) {
+        allItems = await localRes.json();
+      } else {
+        // Fallback to direct Supabase SDK
+        const { data, error: itemsError } = await supabase
+          .from('items')
+          .select('*')
+          .eq('status', 'available')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        
+        if (itemsError) throw itemsError;
+        allItems = data || [];
+      }
 
-      if (itemsError) throw itemsError;
-
-      let filteredItems = allItems || [];
+      let filteredItems = allItems;
       if (debouncedSearchQuery || (!selectedCategories.includes('Tutte') && selectedCategories.length > 0) || maxPriceFilter < 5000) {
-        filteredItems = filteredItems.filter(item => {
+        filteredItems = filteredItems.filter((item: any) => {
           const matchesSearch = !debouncedSearchQuery ||
             item.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
             item.description.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
@@ -416,7 +431,11 @@ export default function App() {
     const granted = await notificationService.requestPermission();
     setNotificationsEnabled(granted);
     if (granted) {
-      alert("Notifiche attivate con successo!");
+      setShowSuccessModal({
+        show: true,
+        title: t('success_title' as any),
+        message: t('notifications_enabled_success' as any)
+      });
     }
   };
 
@@ -595,7 +614,11 @@ export default function App() {
           updated_at: new Date().toISOString()
         }).eq('id', editingId);
         if (error) throw error;
-        alert("Annuncio aggiornato con successo!");
+        setShowSuccessModal({
+          show: true,
+          title: t('success_title' as any),
+          message: t('item_published_success' as any)
+        });
       } else {
         const { data: insertedItem, error } = await supabase.from('items').insert({
           title: newItem.title,
@@ -611,7 +634,11 @@ export default function App() {
 
         if (error) throw error;
         if (insertedItem) await runMatching(undefined, insertedItem.id);
-        alert("Annuncio pubblicato con successo!");
+        setShowSuccessModal({
+          show: true,
+          title: t('success_title' as any),
+          message: t('item_published_success' as any)
+        });
       }
 
       requireAuth('dashboard');
@@ -2793,6 +2820,38 @@ export default function App() {
           </div>
         </div>
       </footer>
+      {/* Success Modal */}
+      <AnimatePresence>
+        {showSuccessModal.show && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-sm bg-white rounded-[2.5rem] overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 text-center space-y-4">
+                <div className="w-16 h-16 bg-green-50 text-green-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                  <CheckCircle2 size={32} />
+                </div>
+                <h3 className="text-2xl font-black tracking-tight">{showSuccessModal.title}</h3>
+                <p className="text-ios-gray text-sm leading-relaxed font-medium">
+                  {showSuccessModal.message}
+                </p>
+              </div>
+
+              <div className="p-4 bg-ios-secondary/30">
+                <button
+                  onClick={() => setShowSuccessModal({ ...showSuccessModal, show: false })}
+                  className="w-full py-4 bg-gradient-to-br from-brand-start to-brand-end text-white font-black rounded-2xl shadow-lg shadow-brand-end/25 active:scale-95 transition-all text-sm uppercase tracking-widest"
+                >
+                  {t('close' as any)}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

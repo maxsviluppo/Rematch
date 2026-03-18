@@ -2,6 +2,11 @@ import { io, Socket } from "socket.io-client";
 
 class NotificationService {
   private socket: Socket | null = null;
+  private onNotificationCallback: ((data: any) => void) | null = null;
+
+  onNotification(callback: (data: any) => void) {
+    this.onNotificationCallback = callback;
+  }
 
   init(userId: string) {
     if (this.socket) return;
@@ -12,6 +17,9 @@ class NotificationService {
 
     this.socket.on("notification", (data: { title: string; body: string; type: string; data?: any }) => {
       this.showBrowserNotification(data.title, data.body);
+      if (this.onNotificationCallback) {
+        this.onNotificationCallback(data);
+      }
     });
 
     this.socket.on("connect", () => {

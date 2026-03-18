@@ -1,34 +1,23 @@
-
 import pg from 'pg';
-const { Pool } = pg;
 import dotenv from 'dotenv';
 dotenv.config();
 
+const { Pool } = pg;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
-async function checkExactColumns() {
+async function checkColumns() {
   try {
-    const client = await pool.connect();
-    
-    console.log("--- TRANSACTIONS COLUMNS ---");
-    const resT = await client.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'transactions'");
-    resT.rows.forEach(row => console.log(`'${row.column_name}'`));
-    
-    console.log("\n--- ITEMS COLUMNS ---");
-    const resI = await client.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'items'");
-    resI.rows.forEach(row => console.log(`'${row.column_name}'`));
-    
-    client.release();
+    const { rows } = await pool.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'items'");
+    console.log("COLUMNS IN 'items':");
+    console.log(rows);
+    process.exit(0);
   } catch (err) {
-    console.error("Error:", err.message);
-  } finally {
-    await pool.end();
+    console.error(err);
+    process.exit(1);
   }
 }
 
-checkExactColumns();
+checkColumns();
