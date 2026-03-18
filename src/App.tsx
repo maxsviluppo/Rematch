@@ -970,58 +970,70 @@ export default function App() {
       return;
     }
     setLoading(true);
-    console.log("Starting Checkout Simulation...", { activeProposal, shippingDetails });
+    console.log("Starting Checkout (Supabase direct)...", { activeProposal, shippingDetails });
     try {
-      const baseUrl = window.location.origin;
-      const checkoutUrl = baseUrl.includes('localhost') ? '/api/transactions' : `${baseUrl}/api/transactions`;
-      
-      const response = await fetch(checkoutUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          proposal_id: activeProposal.proposal_id,
+      // Calculate shipping deadline (5 days)
+      const deadline = new Date();
+      deadline.setDate(deadline.getDate() + 5);
+
+      const proposalId = activeProposal.proposal_id && activeProposal.proposal_id > 0
+        ? activeProposal.proposal_id
+        : null;
+
+      // Insert transaction directly via Supabase
+      const { data: txData, error: txError } = await supabase
+        .from('transactions')
+        .insert([{
+          proposal_id: proposalId,
           buyer_id: currentUser.id,
           seller_id: activeProposal.seller_id,
           item_id: activeProposal.item_id,
-          title: activeProposal.title,
-          price: activeProposal.price,
-          category: activeProposal.category,
-          image_url: activeProposal.image_url,
-          images: activeProposal.images,
-          shipping_details: shippingDetails
-        })
-      });
+          buyer_name: String(shippingDetails.name || ''),
+          buyer_surname: String(shippingDetails.surname || ''),
+          buyer_email: String(shippingDetails.email || ''),
+          buyer_phone: String(shippingDetails.phone || ''),
+          buyer_address: String(shippingDetails.address || ''),
+          buyer_city: String(shippingDetails.city || ''),
+          buyer_cap: String(shippingDetails.cap || ''),
+          shipping_deadline: deadline.toISOString(),
+          status: 'paid',
+          title: String(activeProposal.title || ''),
+          price: parseFloat(String(activeProposal.price)) || 0,
+          category: String(activeProposal.category || ''),
+          image_url: String(activeProposal.image_url || ''),
+          images: activeProposal.images || []
+        }])
+        .select('id')
+        .single();
 
-      if (!response.ok) {
-        let errorMessage = 'Errore durante il checkout';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch (e) {
-          errorMessage = `Server Error: ${response.status} ${response.statusText}`;
-        }
-        throw new Error(errorMessage);
+      if (txError) {
+        console.error("Transaction insert error:", txError);
+        throw new Error(txError.message || JSON.stringify(txError));
       }
 
-      console.log("Checkout Success! Redirecting to success page...");
-      
-      // Se l'acquisto deriva da un match (proposta), eliminiamo la ricerca originale e le sue proposte
+      console.log("Transaction created:", txData);
+
+      // Update proposal status if exists
+      if (proposalId) {
+        await supabase.from('proposals').update({ status: 'accepted' }).eq('id', proposalId);
+      }
+
+      // Mark item as sold
+      await supabase.from('items').update({ status: 'sold' }).eq('id', activeProposal.item_id);
+
+      // If purchase came from a match, clean up request and proposals
       if (activeProposal.request_id && activeProposal.request_id > 0) {
-        console.log("Eliminating associated request and proposals:", activeProposal.request_id);
-        // Eliminiamo prima le proposte associate per evitare errori di vincoli (Foreign Key)
         await supabase.from('proposals').delete().eq('request_id', activeProposal.request_id);
-        // Poi eliminiamo la ricerca
         await supabase.from('requests').delete().eq('id', activeProposal.request_id);
       }
 
+      console.log("Checkout Success!");
       setView('success');
       await fetchData();
     } catch (err: any) {
       console.error("Checkout Error:", err);
-      alert("Errore durante il checkout: " + err.message);
+      const msg = typeof err === 'string' ? err : (err?.message || JSON.stringify(err));
+      alert("Errore durante il checkout: " + msg);
     } finally {
       setLoading(false);
     }
@@ -1034,22 +1046,25 @@ export default function App() {
     }
     setLoading(true);
     try {
-      const response = await fetch(`/api/transactions/${transactionId}/ship`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trackingInfo)
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Errore durante la conferma spedizione');
-      }
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          status: 'shipped',
+          tracking_id: trackingInfo.tracking_id,
+          courier: trackingInfo.courier,
+          seller_iban: trackingInfo.seller_iban,
+          shipped_at: new Date().toISOString()
+        })
+        .eq('id', transactionId);
+
+      if (error) throw new Error(error.message);
 
       alert(t('confirm_shipping_cta') + " OK!");
       await fetchData();
     } catch (err: any) {
       console.error("SHIPMENT ERROR:", err);
-      alert(err.message);
+      const msg = typeof err === 'string' ? err : (err?.message || JSON.stringify(err));
+      alert(msg);
     } finally {
       setLoading(false);
     }
@@ -1057,17 +1072,19 @@ export default function App() {
 
   const handleConfirmArrival = async (transactionId: number) => {
     try {
-      const response = await fetch(`/api/transactions/${transactionId}/confirm-arrival`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) throw new Error('Errore durante la conferma ricezione');
+      const { error } = await supabase
+        .from('transactions')
+        .update({ status: 'delivered' })
+        .eq('id', transactionId);
+
+      if (error) throw new Error(error.message);
 
       alert(t('item_arrived'));
       fetchData();
     } catch (err: any) {
       console.error(err);
-      alert(err.message);
+      const msg = typeof err === 'string' ? err : (err?.message || JSON.stringify(err));
+      alert(msg);
     }
   };
 
