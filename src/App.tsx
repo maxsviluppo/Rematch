@@ -85,6 +85,197 @@ const CATEGORIES = [
   'Altro'
 ];
 
+// --- HELPER COMPONENTS ---
+
+
+const TransactionCard = ({ tr, isSeller, t, currentUser, loading, handleShip, handleConfirmArrival, setReviewState, reviewState, handleSubmitReview }: any) => {
+  const deadlineDate = new Date(tr.shipping_deadline);
+  const now = new Date();
+  const diff = deadlineDate.getTime() - now.getTime();
+  const daysLeft = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const isExpired = diff <= 0 && tr.status === 'paid';
+
+  return (
+    <motion.div layout className="ios-card p-8 group relative overflow-hidden bg-white shadow-xl hover:shadow-2xl transition-all border border-black/[0.02]">
+      <div className="flex flex-col md:flex-row gap-8">
+        <div className="w-full md:w-32 h-32 rounded-3xl overflow-hidden shrink-0 shadow-md">
+          <img src={tr.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+        </div>
+        <div className="flex-1 space-y-6">
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${isSeller ? 'bg-ios-blue text-white' : 'bg-brand-start text-white'}`}>
+                  {isSeller ? t('sale') : t('purchase')}
+                </span>
+                <span className="text-ios-gray font-bold text-xs">{t('id')} #{tr.id}</span>
+              </div>
+              <h4 className="text-2xl font-black tracking-tight">{tr.title}</h4>
+              <p className="text-brand-start font-black text-xl">{tr.price}€</p>
+            </div>
+            <div className="text-right">
+              <div className={`px-4 py-2 rounded-2xl font-black text-xs uppercase tracking-widest ${
+                tr.status === 'paid' ? 'bg-orange-100 text-orange-600' :
+                tr.status === 'shipped' ? 'bg-blue-100 text-blue-600' :
+                tr.status === 'delivered' ? 'bg-green-100 text-green-600' :
+                'bg-ios-secondary text-ios-gray'
+              }`}>
+                {tr.status === 'paid' ? t('to_ship') : tr.status === 'shipped' ? t('in_transit') : tr.status === 'delivered' ? t('delivered') : tr.status}
+              </div>
+            </div>
+          </div>
+          <div className="p-6 bg-ios-secondary/30 rounded-3xl border border-black/[0.03] space-y-6">
+            {isSeller ? (
+              <>
+                {tr.status === 'paid' && (
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-3 p-4 bg-orange-500/10 text-orange-600 rounded-2xl">
+                      <Clock size={20} className="shrink-0" />
+                      <div>
+                        <p className="font-black text-sm uppercase tracking-tight">{t('ship_within_5_days')}</p>
+                        <p className="text-[10px] opacity-80">{t('payment_confirmed_seller')}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-xs font-black uppercase tracking-widest text-ios-gray">{t('shipping_address')}</h5>
+                        <div className="flex items-center gap-2">
+                          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest animate-pulse ${
+                            daysLeft <= 1 ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 
+                            daysLeft <= 3 ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 
+                            'bg-green-500 text-white'
+                          }`}>
+                            <Clock size={12} />
+                            {isExpired ? t('expired_badge' as any) : `${daysLeft} ${t('days_remaining' as any)}`}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-sm font-bold leading-relaxed text-ios-label bg-white/50 p-4 rounded-2xl border border-black/[0.02]">
+                        {tr.buyer_name} {tr.buyer_surname}<br />
+                        <span className="text-brand-end">{t('shipping_to' as any)}</span> {tr.buyer_address}<br />
+                        {tr.buyer_cap}, {tr.buyer_city}<br />
+                        <span className="text-ios-gray/60">{tr.buyer_email}</span>
+                      </div>
+                    </div>
+
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      const formData = new FormData(e.currentTarget);
+                      handleShip(tr.id, {
+                        tracking_id: formData.get('tracking') as string,
+                        courier: formData.get('courier') as string,
+                        seller_iban: formData.get('iban') as string
+                      });
+                    }} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <input name="tracking" required placeholder={t('tracking_code')} className="checkout-input !py-3 !text-sm" />
+                      <input name="courier" required placeholder={t('courier_placeholder')} className="checkout-input !py-3 !text-sm" />
+                      <div className="md:col-span-2 space-y-2">
+                        <label className="text-[10px] font-black uppercase text-ios-gray ml-1">{t('bank_details')}</label>
+                        <input name="iban" required placeholder={t('iban_placeholder')} className="checkout-input !py-3 !text-sm" />
+                      </div>
+                      <button 
+                        type="submit" 
+                        disabled={loading}
+                        className={`md:col-span-2 ios-btn-primary !py-4 !rounded-2xl shadow-lg shadow-brand-end/20 flex items-center justify-center gap-3 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                      >
+                        {loading ? (
+                          <>
+                            <RefreshCw className="animate-spin" size={20} />
+                            <span>{t('saving')}</span>
+                          </>
+                        ) : (
+                          t('confirm_shipping_cta')
+                        )}
+                      </button>
+                    </form>
+                  </div>
+                )}
+                {tr.status === 'shipped' && (
+                  <div className="space-y-3">
+                    <p className="text-ios-blue font-bold text-sm tracking-tight">{t('waiting_buyer_confirm')}</p>
+                    <div className="p-4 bg-ios-blue/5 rounded-2xl border border-ios-blue/10">
+                      <p className="text-[10px] text-ios-blue font-bold uppercase tracking-widest mb-1">{t('tracking_for_buyer')}</p>
+                      <p className="text-sm font-black">{tr.courier} • {tr.tracking_id}</p>
+                    </div>
+                  </div>
+                )}
+                {tr.status === 'delivered' && (
+                  <div className="p-5 bg-green-500/10 text-green-600 rounded-2xl border border-green-500/20">
+                    <p className="font-black text-sm uppercase tracking-tight mb-2">Match Completato!</p>
+                    <p className="text-xs font-medium leading-relaxed">{t('payment_processed_in_3_days')}</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {tr.status === 'paid' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 p-4 bg-ios-blue/10 text-ios-blue rounded-2xl">
+                      <Clock size={20} className="shrink-0" />
+                      <p className="font-bold text-sm">{t('order_shipped_within_5')}</p>
+                    </div>
+                    <p className="text-xs text-ios-gray font-medium leading-relaxed">{t('arrival_instructions')}</p>
+                  </div>
+                )}
+                {tr.status === 'shipped' && (
+                  <div className="space-y-6">
+                    <div className="p-4 bg-ios-blue/5 rounded-2xl border border-ios-blue/10">
+                      <p className="text-[10px] text-ios-blue font-bold uppercase tracking-widest mb-1">{t('tracking_code')}</p>
+                      <p className="text-sm font-black">{tr.courier} • {tr.tracking_id}</p>
+                    </div>
+                    <button
+                      onClick={() => handleConfirmArrival(tr.id)}
+                      className="w-full bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/20 text-white font-black py-4 rounded-2xl transition-all active:scale-95"
+                    >
+                      {t('confirm_receive')}
+                    </button>
+                  </div>
+                )}
+                {tr.status === 'delivered' && (
+                  <div className="space-y-6">
+                    <div className="p-4 bg-green-500/10 text-green-600 rounded-2xl font-black text-sm uppercase text-center border border-green-500/20">
+                      {t('item_arrived')}
+                    </div>
+
+                    <form onSubmit={(e) => {
+                      setReviewState({...reviewState, transactionId: tr.id});
+                      handleSubmitReview(e);
+                    }} className="space-y-4 pt-4 border-t border-black/[0.05]">
+                      <h5 className="text-sm font-black uppercase tracking-widest text-ios-gray">{t('write_review')}</h5>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setReviewState({...reviewState, rating: star, transactionId: tr.id})}
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${reviewState.rating >= star ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-ios-secondary text-ios-gray'}`}
+                          >
+                            <Star size={18} fill={reviewState.rating >= star ? 'currentColor' : 'none'} />
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        required
+                        placeholder={t('placeholder_desc')}
+                        className="rm-input-lg !py-3 !text-sm resize-none"
+                        rows={2}
+                        value={reviewState.transactionId === tr.id ? reviewState.comment : ''}
+                        onChange={(e) => setReviewState({...reviewState, comment: e.target.value, transactionId: tr.id})}
+                      />
+                      <button type="submit" className="ios-btn-primary w-full py-4 text-sm">{t('submit_review')}</button>
+                    </form>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 export default function App() {
   const [session, setSession] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<{id: string, nome: string} | null>(null);
@@ -1717,27 +1908,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 2. 4 Information Containers (Stats Summary) */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                {[
-                  { label: t('in_sale'), value: items.filter(i => i.seller_id === (session?.user?.id || '')).length, icon: <Package size={18} />, color: 'bg-brand-end/10 text-brand-end' },
-                  { label: t('my_searches'), value: userRequests.length, icon: <Search size={18} />, color: 'bg-ios-blue/10 text-ios-blue' },
-                  { label: t('matches_found'), value: proposals.length, icon: <Bell size={18} />, color: 'bg-green-500/10 text-green-600' },
-                  { label: t('saved_items'), value: favorites.length, icon: <Heart size={18} />, color: 'bg-red-500/10 text-red-500' },
-                ].map(s => (
-                  <motion.div key={s.label} whileHover={{ y: -2 }} className="ios-card p-4 sm:p-6 space-y-3">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${s.color}`}>{s.icon}</div>
-                    <div>
-                      <p className="text-ios-gray text-[10px] font-black uppercase tracking-wider">{s.label}</p>
-                      <p className="text-2xl sm:text-3xl font-display font-black">{s.value}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-12">
-                  {/* 3. My Searches (Moved here) */}
+
+                  {/* 1. My Searches (As List) - Now Higher */}
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
                       <h3 className="rm-section-title">{t('my_searches')}</h3>
@@ -1746,22 +1920,22 @@ export default function App() {
 
                     {userRequests.length === 0 ? (
                       <div className="ios-card p-12 border-2 border-dashed border-ios-gray/10 flex flex-col items-center justify-center text-center space-y-3">
-                        <div className="w-12 h-12 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
-                          <Search size={24} />
+                         <div className="w-10 h-10 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
+                          <Search size={20} />
                         </div>
-                        <p className="text-ios-gray text-sm">{t('no_saved_searches')}</p>
+                        <p className="text-ios-gray text-xs">{t('no_saved_searches')}</p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {userRequests.map((req) => (
-                          <div key={req.id} className="ios-card p-4 flex items-center justify-between">
+                          <div key={req.id} className="ios-card p-4 flex items-center justify-between hover:bg-black/[0.01] transition-colors">
                             <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-ios-blue/10 text-ios-blue rounded-full flex items-center justify-center">
+                              <div className="w-10 h-10 bg-ios-blue/10 text-ios-blue rounded-full flex items-center justify-center shadow-sm">
                                 <Search size={18} />
                               </div>
                               <div>
-                                <p className="font-bold text-sm">"{req.query}"</p>
-                                <p className="text-[10px] text-ios-gray">
+                                <p className="font-bold text-sm tracking-tight text-ios-label">"{req.query}"</p>
+                                <p className="text-[10px] text-ios-gray font-bold uppercase tracking-wider">
                                   {req.location} • {req.max_price > 0 ? `${t('up_to')} €${req.max_price}` : t('any_price')}
                                 </p>
                               </div>
@@ -1769,25 +1943,19 @@ export default function App() {
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => {
-                                  setNewRequest({
-                                    query: req.query,
-                                    min_price: 0,
-                                    max_price: req.max_price,
-                                    location: req.location
-                                  });
-                                  deleteRequest(req.id); // Eliminate for rewrite
+                                  setNewRequest({ query: req.query, min_price: 0, max_price: req.max_price, location: req.location });
+                                  deleteRequest(req.id);
                                   setView('buy');
                                 }}
-                                className="p-2 text-ios-gray hover:text-ios-blue transition-colors"
-                                title={t('edit_search')}
+                                className="p-2 text-ios-gray hover:text-ios-blue transition-colors rounded-lg hover:bg-ios-blue/5"
                               >
-                                <RefreshCw size={18} />
+                                <RefreshCw size={16} />
                               </button>
                               <button
                                 onClick={() => deleteRequest(req.id)}
-                                className="p-2 text-ios-gray hover:text-red-500 transition-colors"
+                                className="p-2 text-ios-gray hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
                               >
-                                <X size={18} />
+                                <Trash2 size={16} />
                               </button>
                             </div>
                           </div>
@@ -1796,7 +1964,7 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* 4. Suggested Matches (Moved here) */}
+                  {/* 1. Suggested Matches (High Importance) */}
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
                       <h3 className="rm-section-title">{t('suggested_matches')}</h3>
@@ -1806,14 +1974,11 @@ export default function App() {
                     </div>
 
                     {proposals.length === 0 ? (
-                      <div className="ios-card p-16 flex flex-col items-center justify-center text-center space-y-4">
-                        <div className="w-16 h-16 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
-                          <ShoppingBag size={32} />
+                      <div className="ios-card p-12 border-2 border-dashed border-ios-gray/10 flex flex-col items-center justify-center text-center space-y-4">
+                        <div className="w-12 h-12 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
+                          <ShoppingBag size={24} />
                         </div>
-                        <div className="space-y-1">
-                          <p className="font-bold">{t('no_matches')}</p>
-                          <p className="text-ios-gray text-sm max-w-xs">{t('no_matches_desc')}</p>
-                        </div>
+                        <p className="text-ios-gray text-sm">{t('no_matches')}</p>
                       </div>
                     ) : (
                       <div className="space-y-4">
@@ -1867,298 +2032,72 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* 5. Items in Sale (New Section) */}
+                  {/* 2. My Sales (Active) */}
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">{t('in_sale')}</h3>
-                      <span className="text-ios-gray text-xs font-medium">
-                        {items.filter(i => i.seller_id === (session?.user?.id || '')).length} {t('items_count')}
-                      </span>
+                      <h3 className="rm-section-title">Vendite</h3>
+                      <span className="text-ios-gray text-xs font-medium">{transactions.filter(t => t.seller_id === currentUser?.id).length} attive</span>
                     </div>
 
-                    {items.filter(i => i.seller_id === (session?.user?.id || '')).length === 0 ? (
-                      <div className="ios-card p-12 border-2 border-dashed border-ios-gray/10 flex flex-col items-center justify-center text-center space-y-3">
-                        <div className="w-12 h-12 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
-                          <Package size={24} />
-                        </div>
-                        <p className="text-ios-gray text-sm">{t('no_saved_items')}</p>
+                    {transactions.filter(t => t.seller_id === currentUser?.id).length === 0 ? (
+                      <div className="ios-card p-8 text-center bg-ios-secondary/10 border-2 border-dashed border-black/[0.03]">
+                        <p className="text-ios-gray text-xs">Nessuna vendita attiva.</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                        {items.filter(i => i.seller_id === (session?.user?.id || '')).map((item) => (
-                          <motion.div
-                            layout
-                            key={item.id}
-                            onClick={() => setSelectedItem(item)}
-                            className="ios-card group cursor-pointer relative"
-                          >
-                            <div className="aspect-square overflow-hidden relative">
-                              <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
-                              <div className="absolute top-2 right-2 px-2 py-0.5 bg-green-500 text-white rounded-lg text-[10px] font-black shadow-sm">
-                                Live
-                              </div>
-                              <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-white/95 backdrop-blur-sm rounded-lg text-[10px] font-black shadow-sm">
-                                €{item.price}
-                              </div>
-                            </div>
-                            <div className="p-3">
-                              <h4 className="font-bold text-xs truncate">{item.title}</h4>
-                            </div>
-                          </motion.div>
+                      <div className="grid grid-cols-1 gap-6">
+                        {transactions.filter(t => t.seller_id === currentUser?.id).map(tr => (
+                          <TransactionCard 
+                            key={tr.id} 
+                            tr={tr} 
+                            isSeller={true} 
+                            t={t} 
+                            currentUser={currentUser}
+                            loading={loading}
+                            handleShip={handleShip}
+                            handleConfirmArrival={handleConfirmArrival}
+                            setReviewState={setReviewState}
+                            reviewState={reviewState}
+                            handleSubmitReview={handleSubmitReview}
+                          />
                         ))}
                       </div>
                     )}
                   </div>
 
-                  {/* 5. Sales & Purchases (Transactions) */}
-                  <div className="space-y-8">
-                    <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">{t('sales_purchases')}</h3>
-                      <div className="flex gap-2">
-                        <span className="px-3 py-1 bg-ios-secondary rounded-full text-[10px] font-bold text-ios-gray uppercase tracking-widest">Live Flow</span>
-                      </div>
-                    </div>
-
-                    {transactions.length === 0 ? (
-                      <div className="ios-card p-12 text-center space-y-4 bg-ios-secondary/20 border-2 border-dashed border-black/[0.05]">
-                        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto shadow-sm">
-                          <Clock size={24} className="text-ios-gray" />
-                        </div>
-                        <p className="text-ios-gray font-bold">{t('no_active_transactions')}</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-8">
-                        {transactions.map(tr => {
-                          const isSeller = tr.seller_id === (currentUser?.id || '');
-                          const deadlineDate = new Date(tr.shipping_deadline);
-                          const now = new Date();
-                          const diff = deadlineDate.getTime() - now.getTime();
-                          const daysLeft = Math.floor(diff / (1000 * 60 * 60 * 24));
-                          const hoursLeft = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                          const isExpired = diff <= 0 && tr.status === 'paid';
-
-                          return (
-                            <motion.div key={tr.id} layout className="ios-card p-8 group relative overflow-hidden bg-white shadow-xl hover:shadow-2xl transition-all border border-black/[0.02]">
-                              <div className="flex flex-col md:flex-row gap-8">
-                                <div className="w-full md:w-32 h-32 rounded-3xl overflow-hidden shrink-0 shadow-md">
-                                  <img src={tr.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                                </div>
-                                <div className="flex-1 space-y-6">
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <div className="flex items-center gap-3 mb-2">
-                                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${isSeller ? 'bg-ios-blue text-white' : 'bg-brand-start text-white'}`}>
-                                          {isSeller ? t('sale') : t('purchase')}
-                                        </span>
-                                        <span className="text-ios-gray font-bold text-xs">{t('id')} #{tr.id}</span>
-                                      </div>
-                                      <h4 className="text-2xl font-black tracking-tight">{tr.title}</h4>
-                                      <p className="text-brand-start font-black text-xl">{tr.price}€</p>
-                                    </div>
-                                    <div className="text-right">
-                                      <div className={`px-4 py-2 rounded-2xl font-black text-xs uppercase tracking-widest ${
-                                        tr.status === 'paid' ? 'bg-orange-100 text-orange-600' :
-                                        tr.status === 'shipped' ? 'bg-blue-100 text-blue-600' :
-                                        tr.status === 'delivered' ? 'bg-green-100 text-green-600' :
-                                        'bg-ios-secondary text-ios-gray'
-                                      }`}>
-                                        {tr.status === 'paid' ? t('to_ship') : tr.status === 'shipped' ? t('in_transit') : tr.status === 'delivered' ? t('delivered') : tr.status}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="p-6 bg-ios-secondary/30 rounded-3xl border border-black/[0.03] space-y-6">
-                                    {isSeller ? (
-                                      <>
-                                        {tr.status === 'paid' && (
-                                          <div className="space-y-6">
-                                            <div className="flex items-center gap-3 p-4 bg-orange-500/10 text-orange-600 rounded-2xl">
-                                              <Clock size={20} className="shrink-0" />
-                                              <div>
-                                                <p className="font-black text-sm uppercase tracking-tight">{t('ship_within_5_days')}</p>
-                                                <p className="text-[10px] opacity-80">{t('payment_confirmed_seller')}</p>
-                                              </div>
-                                            </div>
-
-                                            <div className="space-y-4">
-                                              <div className="flex items-center justify-between">
-                                                <h5 className="text-xs font-black uppercase tracking-widest text-ios-gray">{t('shipping_address')}</h5>
-                                                <div className="flex items-center gap-2">
-                                                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest animate-pulse ${
-                                                    daysLeft <= 1 ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 
-                                                    daysLeft <= 3 ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 
-                                                    'bg-green-500 text-white'
-                                                  }`}>
-                                                    <Clock size={12} />
-                                                    {isExpired ? t('expired_badge' as any) : `${daysLeft} ${t('days_remaining' as any)}`}
-                                                  </div>
-                                                </div>
-                                              </div>
-                                              <div className="text-sm font-bold leading-relaxed text-ios-label bg-white/50 p-4 rounded-2xl border border-black/[0.02]">
-                                                {tr.buyer_name} {tr.buyer_surname}<br />
-                                                <span className="text-brand-end">{t('shipping_to' as any)}</span> {tr.buyer_address}<br />
-                                                {tr.buyer_cap}, {tr.buyer_city}<br />
-                                                <span className="text-ios-gray/60">{tr.buyer_email}</span>
-                                              </div>
-                                            </div>
-
-                                            <form onSubmit={(e) => {
-                                              e.preventDefault();
-                                              const formData = new FormData(e.currentTarget);
-                                              handleShip(tr.id, {
-                                                tracking_id: formData.get('tracking') as string,
-                                                courier: formData.get('courier') as string,
-                                                seller_iban: formData.get('iban') as string
-                                              });
-                                            }} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                              <input name="tracking" required placeholder={t('tracking_code')} className="checkout-input !py-3 !text-sm" />
-                                              <input name="courier" required placeholder={t('courier_placeholder')} className="checkout-input !py-3 !text-sm" />
-                                              <div className="md:col-span-2 space-y-2">
-                                                <label className="text-[10px] font-black uppercase text-ios-gray ml-1">{t('bank_details')}</label>
-                                                <input name="iban" required placeholder={t('iban_placeholder')} className="checkout-input !py-3 !text-sm" />
-                                              </div>
-                                              <button 
-                                                type="submit" 
-                                                disabled={loading}
-                                                className={`md:col-span-2 ios-btn-primary !py-4 !rounded-2xl shadow-lg shadow-brand-end/20 flex items-center justify-center gap-3 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                              >
-                                                {loading ? (
-                                                  <>
-                                                    <RefreshCw className="animate-spin" size={20} />
-                                                    <span>{t('saving')}</span>
-                                                  </>
-                                                ) : (
-                                                  t('confirm_shipping_cta')
-                                                )}
-                                              </button>
-                                            </form>
-                                          </div>
-                                        )}
-                                        {tr.status === 'shipped' && (
-                                          <div className="space-y-3">
-                                            <p className="text-ios-blue font-bold text-sm tracking-tight">{t('waiting_buyer_confirm')}</p>
-                                            <div className="p-4 bg-ios-blue/5 rounded-2xl border border-ios-blue/10">
-                                              <p className="text-[10px] text-ios-blue font-bold uppercase tracking-widest mb-1">{t('tracking_for_buyer')}</p>
-                                              <p className="text-sm font-black">{tr.courier} • {tr.tracking_id}</p>
-                                            </div>
-                                          </div>
-                                        )}
-                                        {tr.status === 'delivered' && (
-                                          <div className="p-5 bg-green-500/10 text-green-600 rounded-2xl border border-green-500/20">
-                                            <p className="font-black text-sm uppercase tracking-tight mb-2">Match Completato!</p>
-                                            <p className="text-xs font-medium leading-relaxed">{t('payment_processed_in_3_days')}</p>
-                                          </div>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <>
-                                        {tr.status === 'paid' && (
-                                          <div className="space-y-4">
-                                            <div className="flex items-center gap-3 p-4 bg-ios-blue/10 text-ios-blue rounded-2xl">
-                                              <Clock size={20} className="shrink-0" />
-                                              <p className="font-bold text-sm">{t('order_shipped_within_5')}</p>
-                                            </div>
-                                            <p className="text-xs text-ios-gray font-medium leading-relaxed">{t('arrival_instructions')}</p>
-                                          </div>
-                                        )}
-                                        {tr.status === 'shipped' && (
-                                          <div className="space-y-6">
-                                            <div className="p-4 bg-ios-blue/5 rounded-2xl border border-ios-blue/10">
-                                              <p className="text-[10px] text-ios-blue font-bold uppercase tracking-widest mb-1">{t('tracking_code')}</p>
-                                              <p className="text-sm font-black">{tr.courier} • {tr.tracking_id}</p>
-                                            </div>
-                                            <button
-                                              onClick={() => handleConfirmArrival(tr.id)}
-                                              className="w-full bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/20 text-white font-black py-4 rounded-2xl transition-all active:scale-95"
-                                            >
-                                              {t('confirm_receive')}
-                                            </button>
-                                          </div>
-                                        )}
-                                        {tr.status === 'delivered' && (
-                                          <div className="space-y-6">
-                                            <div className="p-4 bg-green-500/10 text-green-600 rounded-2xl font-black text-sm uppercase text-center border border-green-500/20">
-                                              {t('item_arrived')}
-                                            </div>
-
-                                            <form onSubmit={(e) => {
-                                              setReviewState({...reviewState, transactionId: tr.id});
-                                              handleSubmitReview(e);
-                                            }} className="space-y-4 pt-4 border-t border-black/[0.05]">
-                                              <h5 className="text-sm font-black uppercase tracking-widest text-ios-gray">{t('write_review')}</h5>
-                                              <div className="flex gap-2">
-                                                {[1, 2, 3, 4, 5].map(star => (
-                                                  <button
-                                                    key={star}
-                                                    type="button"
-                                                    onClick={() => setReviewState({...reviewState, rating: star, transactionId: tr.id})}
-                                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${reviewState.rating >= star ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-ios-secondary text-ios-gray'}`}
-                                                  >
-                                                    <Star size={18} fill={reviewState.rating >= star ? 'currentColor' : 'none'} />
-                                                  </button>
-                                                ))}
-                                              </div>
-                                              <textarea
-                                                required
-                                                placeholder={t('placeholder_desc')}
-                                                className="rm-input-lg !py-3 !text-sm resize-none"
-                                                rows={2}
-                                                value={reviewState.transactionId === tr.id ? reviewState.comment : ''}
-                                                onChange={(e) => setReviewState({...reviewState, comment: e.target.value, transactionId: tr.id})}
-                                              />
-                                              <button type="submit" className="ios-btn-primary w-full py-4 text-sm">{t('submit_review')}</button>
-                                            </form>
-                                          </div>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 6. Saved Objects */}
+                  {/* 4. My Purchases (Active) */}
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">{t('saved_items')}</h3>
-                      <span className="text-ios-gray text-xs font-medium">{favorites.length} {t('items_count')}</span>
+                      <h3 className="rm-section-title">Acquisti</h3>
+                      <span className="text-ios-gray text-xs font-medium">{transactions.filter(t => t.buyer_id === currentUser?.id).length} attivi</span>
                     </div>
 
-                    {favorites.length === 0 ? (
-                      <div className="ios-card p-12 border-2 border-dashed border-ios-gray/10 flex flex-col items-center justify-center text-center space-y-3">
-                        <div className="w-12 h-12 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
-                          <Heart size={24} />
-                        </div>
-                        <p className="text-ios-gray text-sm">{t('no_saved_items')}</p>
+                    {transactions.filter(t => t.buyer_id === currentUser?.id).length === 0 ? (
+                      <div className="ios-card p-8 text-center bg-ios-secondary/10 border-2 border-dashed border-black/[0.03]">
+                        <p className="text-ios-gray text-xs">Nessun acquisto attivo.</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                        {favorites.map((item) => (
-                          <motion.div
-                            layout
-                            key={item.id}
-                            onClick={() => setSelectedItem(item)}
-                            className="ios-card group cursor-pointer relative"
-                          >
-                            <div className="aspect-square overflow-hidden relative">
-                              <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
-                              <button onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }} className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full"><Heart size={12} fill="currentColor" /></button>
-                              <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-white/95 backdrop-blur-sm rounded-lg text-[10px] font-black shadow-sm">
-                                €{item.price}
-                              </div>
-                            </div>
-                            <div className="p-3">
-                              <h4 className="font-bold text-xs truncate">{item.title}</h4>
-                            </div>
-                          </motion.div>
+                      <div className="grid grid-cols-1 gap-6">
+                        {transactions.filter(t => t.buyer_id === currentUser?.id).map(tr => (
+                          <TransactionCard 
+                            key={tr.id} 
+                            tr={tr} 
+                            isSeller={false} 
+                            t={t} 
+                            currentUser={currentUser}
+                            loading={loading}
+                            handleShip={handleShip}
+                            handleConfirmArrival={handleConfirmArrival}
+                            setReviewState={setReviewState}
+                            reviewState={reviewState}
+                            handleSubmitReview={handleSubmitReview}
+                          />
+
                         ))}
                       </div>
                     )}
                   </div>
+
+
 
                   {/* 7. Final - Logout and Delete */}
                   <div className="pt-12 flex flex-col sm:flex-row gap-4">
@@ -2182,6 +2121,44 @@ export default function App() {
                 <div className="space-y-6">
 
                   <div className="ios-card p-5 sm:p-6 space-y-5">
+                    <h3 className="rm-section-title">{t('in_sale')}</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {items.filter(i => i.seller_id === (session?.user?.id || '')).length === 0 ? (
+                        <p className="col-span-2 text-xs text-ios-gray py-4 text-center border border-dashed rounded-xl">{t('no_saved_items')}</p>
+                      ) : (
+                        items.filter(i => i.seller_id === (session?.user?.id || '')).map((item) => (
+                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-2 group cursor-pointer">
+                            <div className="aspect-square rounded-xl overflow-hidden mb-2">
+                              <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                            </div>
+                            <p className="text-[10px] font-bold truncate px-1">{item.title}</p>
+                            <p className="text-[10px] text-brand-end font-black px-1">€{item.price}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="ios-card p-5 sm:p-6 space-y-5">
+                    <h3 className="rm-section-title">{t('saved_items')}</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {favorites.length === 0 ? (
+                        <p className="col-span-2 text-xs text-ios-gray py-4 text-center border border-dashed rounded-xl">{t('no_saved_items')}</p>
+                      ) : (
+                        favorites.map((item) => (
+                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-2 group cursor-pointer relative">
+                            <div className="aspect-square rounded-xl overflow-hidden mb-2">
+                              <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                            </div>
+                            <button onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }} className="absolute top-3 right-3 p-1.5 bg-red-500 text-white rounded-full shadow-lg"><Heart size={10} fill="currentColor" /></button>
+                            <p className="text-[10px] font-bold truncate px-1">{item.title}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="ios-card p-5 sm:p-6 space-y-5">
                     <h3 className="rm-section-title">{t('how_it_works')}</h3>
                     <div className="space-y-6">
                       {[
@@ -2195,7 +2172,7 @@ export default function App() {
                         </div>
                       ))}
                     </div>
-                  </div>
+                 </div>
                 </div>
               </div>
             </motion.div>
@@ -2844,9 +2821,8 @@ export default function App() {
           </div>
         </div>
       </footer>
-      {/* Success Modal */}
-      <AnimatePresence>
-        {/* Success/Error/Notification Modals */}
+
+      {/* Notifications and Success Modals */}
       <AnimatePresence>
         {showNotificationModal.show && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -2889,9 +2865,8 @@ export default function App() {
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
-
-      {showSuccessModal.show && (
+        
+        {showSuccessModal.show && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
