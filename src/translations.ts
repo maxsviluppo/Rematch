@@ -154,7 +154,13 @@ export const translations = {
     success_title: "Operazione Riuscita!",
     item_published_success: "Il tuo annuncio è stato pubblicato con successo.",
     notifications_enabled_success: "Le notifiche sono state attivate con successo!",
-    close: "Chiudi"
+    close: "Chiudi",
+    sold_products: "Prodotti Venduti",
+    purchased_products: "Prodotti Acquistati",
+    shipping_to: "Spedizione a:",
+    days_remaining: "giorni rimanenti",
+    expired_badge: "Scaduto!",
+    go_to_dashboard: "Vai alla Dashboard"
   },
   en: {
     home: "Home",
@@ -307,7 +313,13 @@ export const translations = {
     review_comment: "Comment",
     submit_review: "Submit Review",
     no_phone_notice: "Note: Phone number is not provided for privacy. Use chat if needed.",
-    bank_details: "Bank Details (Transfer)"
+    bank_details: "Bank Details (Transfer)",
+    sold_products: "Sold Products",
+    purchased_products: "Purchased Products",
+    shipping_to: "Shipping to:",
+    days_remaining: "days remaining",
+    expired_badge: "Expired!",
+    go_to_dashboard: "Go to Dashboard"
   },
   es: {
     home: "Inicio",

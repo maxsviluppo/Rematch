@@ -111,6 +111,7 @@ export default function App() {
   const [topSearches, setTopSearches] = useState<{query: string, count: number}[]>([]);
   const [showAllTopSearches, setShowAllTopSearches] = useState(false);
   const [activeProposal, setActiveProposal] = useState<Proposal | null>(null);
+  const [showNotificationModal, setShowNotificationModal] = useState<{ show: boolean, title: string, body: string, type: string }>({ show: false, title: '', body: '', type: '' });
   const [loading, setLoading] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   
@@ -280,8 +281,14 @@ export default function App() {
     // Fetch user-specific data when user changes
     if (currentUser) {
       notificationService.init(currentUser.id);
-      notificationService.onNotification(() => {
-        console.log("Notification received, refreshing data...");
+      notificationService.onNotification((data) => {
+        console.log("Notification received, refreshing data...", data);
+        setShowNotificationModal({ 
+          show: true, 
+          title: data.title, 
+          body: data.body, 
+          type: data.type 
+        });
         fetchData();
       });
       fetchUserRelatedData();
@@ -1682,22 +1689,30 @@ export default function App() {
                     <span>{t('top_seller')}</span>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
                   <div className="space-y-1">
-                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('active_listings')}</p>
-                    <p className="text-4xl font-black">{items.filter(i => i.seller_id === (session?.user?.id || '')).length}</p>
+                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('active_listings' as any)}</p>
+                    <p className="text-3xl sm:text-4xl font-black">{items.filter(i => i.seller_id === (session?.user?.id || '')).length}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('matches_found')}</p>
-                    <p className="text-4xl font-black">{proposals.length}</p>
+                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('sold_products' as any)}</p>
+                    <p className="text-3xl sm:text-4xl font-black">{transactions.filter(tr => tr.seller_id === (session?.user?.id || '')).length}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('purchased_products' as any)}</p>
+                    <p className="text-3xl sm:text-4xl font-black">{transactions.filter(tr => tr.buyer_id === (session?.user?.id || '')).length}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('active_searches')}</p>
-                    <p className="text-4xl font-black">{userRequests.length}</p>
+                    <p className="text-3xl sm:text-4xl font-black">{userRequests.length}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('matches_found')}</p>
+                    <p className="text-3xl sm:text-4xl font-black">{proposals.length}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('reliability')}</p>
-                    <p className="text-4xl font-black">9.8</p>
+                    <p className="text-3xl sm:text-4xl font-black">9.8</p>
                   </div>
                 </div>
               </div>
@@ -1967,13 +1982,22 @@ export default function App() {
                                             <div className="space-y-4">
                                               <div className="flex items-center justify-between">
                                                 <h5 className="text-xs font-black uppercase tracking-widest text-ios-gray">{t('shipping_address')}</h5>
-                                                <span className="text-[10px] text-orange-500 font-bold">{t('no_phone_notice')}</span>
+                                                <div className="flex items-center gap-2">
+                                                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest animate-pulse ${
+                                                    daysLeft <= 1 ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 
+                                                    daysLeft <= 3 ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 
+                                                    'bg-green-500 text-white'
+                                                  }`}>
+                                                    <Clock size={12} />
+                                                    {isExpired ? t('expired_badge' as any) : `${daysLeft} ${t('days_remaining' as any)}`}
+                                                  </div>
+                                                </div>
                                               </div>
                                               <div className="text-sm font-bold leading-relaxed text-ios-label bg-white/50 p-4 rounded-2xl border border-black/[0.02]">
                                                 {tr.buyer_name} {tr.buyer_surname}<br />
-                                                {tr.buyer_address}<br />
+                                                <span className="text-brand-end">{t('shipping_to' as any)}</span> {tr.buyer_address}<br />
                                                 {tr.buyer_cap}, {tr.buyer_city}<br />
-                                                {tr.buyer_email}
+                                                <span className="text-ios-gray/60">{tr.buyer_email}</span>
                                               </div>
                                             </div>
 
@@ -2822,7 +2846,52 @@ export default function App() {
       </footer>
       {/* Success Modal */}
       <AnimatePresence>
-        {showSuccessModal.show && (
+        {/* Success/Error/Notification Modals */}
+      <AnimatePresence>
+        {showNotificationModal.show && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowNotificationModal({ ...showNotificationModal, show: false })}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl border border-black/5"
+            >
+              <div className={`h-2 ${showNotificationModal.type === 'sale' ? 'bg-orange-500' : 'bg-ios-blue'}`} />
+              <div className="p-8 space-y-6">
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className={`p-4 rounded-2xl ${showNotificationModal.type === 'sale' ? 'bg-orange-500/10 text-orange-600' : 'bg-ios-blue/10 text-ios-blue'}`}>
+                    <Bell size={32} className="animate-bounce" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-black tracking-tight">{showNotificationModal.title}</h3>
+                    <p className="text-ios-gray font-bold leading-relaxed">{showNotificationModal.body}</p>
+                  </div>
+                </div>
+                
+                  <button
+                  onClick={() => {
+                    setShowNotificationModal({ ...showNotificationModal, show: false });
+                    setView('dashboard');
+                  }}
+                  className="w-full py-4 bg-black text-white font-black rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-3 shadow-xl"
+                >
+                  <ArrowRight size={20} />
+                  <span>{t('go_to_dashboard' as any)}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {showSuccessModal.show && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}

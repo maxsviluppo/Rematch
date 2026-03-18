@@ -1,0 +1,24 @@
+
+DECLARE
+  base_name text;
+BEGIN
+  -- Extract name from metadata or fallback to email part before @
+  base_name := COALESCE(NEW.raw_user_meta_data->>'nome', split_part(NEW.email, '@', 1));
+
+  INSERT INTO public.users (id, email, nome, nickname, username, created_at)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    base_name,
+    base_name, -- satisfy NOT NULL for nickname
+    base_name, -- satisfy username
+    NOW() -- satisfy NOT NULL for created_at
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    nome = EXCLUDED.nome,
+    nickname = EXCLUDED.nickname,
+    username = EXCLUDED.username;
+    
+  RETURN NEW;
+END;
