@@ -295,6 +295,7 @@ export default function App() {
     if (!session) { setView('auth'); } else { setView(targetView); }
   };
   const [items, setItems] = useState<Item[]>([]);
+  const [sellerItems, setSellerItems] = useState<Item[]>([]);  // All items by current seller (any status)
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [favorites, setFavorites] = useState<Item[]>([]);
   const [userRequests, setUserRequests] = useState<Request[]>([]);
@@ -413,6 +414,7 @@ export default function App() {
         setFavorites([]);
         setProposals([]);
         setTransactions([]);
+        setSellerItems([]);
       }
     });
 
@@ -528,24 +530,16 @@ export default function App() {
     }
 
     try {
-      // Try local API for better stability during DB issues
-      const localRes = await fetch('/api/items');
-      let allItems = [];
+      // Always use Supabase directly — no Express dependency
+      const { data, error: itemsError } = await supabase
+        .from('items')
+        .select('*')
+        .eq('status', 'available')
+        .order('created_at', { ascending: false })
+        .limit(50);
       
-      if (localRes.ok) {
-        allItems = await localRes.json();
-      } else {
-        // Fallback to direct Supabase SDK
-        const { data, error: itemsError } = await supabase
-          .from('items')
-          .select('*')
-          .eq('status', 'available')
-          .order('created_at', { ascending: false })
-          .limit(50);
-        
-        if (itemsError) throw itemsError;
-        allItems = data || [];
-      }
+      if (itemsError) throw itemsError;
+      let allItems = data || [];
 
       let filteredItems = allItems;
       if (debouncedSearchQuery || (!selectedCategories.includes('Tutte') && selectedCategories.length > 0) || maxPriceFilter < 5000) {
@@ -575,13 +569,18 @@ export default function App() {
       const userId = session.user.id;
 
       // Parallel fetch for speed — all via Supabase directly (no Express dependency)
-      const [reqsRes, favsRes, transRes] = await Promise.all([
+      const [reqsRes, favsRes, transRes, sellerItemsRes] = await Promise.all([
         supabase.from('requests').select('*').eq('buyer_id', userId).eq('status', 'active'),
         supabase.from('favorites').select('item_id, items(*)').eq('user_id', userId),
         supabase
           .from('transactions')
           .select('*')
           .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('items')
+          .select('*')
+          .eq('seller_id', userId)
           .order('created_at', { ascending: false })
       ]);
 
@@ -617,6 +616,7 @@ export default function App() {
       }
 
       setTransactions(transRes.data || []);
+      setSellerItems(sellerItemsRes.data || []);
     } catch (err) {
       console.error("User data fetch error:", err);
     }
@@ -655,6 +655,7 @@ export default function App() {
       setProposals([]);
       setTransactions([]);
       setUserRequests([]);
+      setSellerItems([]);
       setView('home');
       try {
         window.scrollTo(0, 0);
@@ -1937,7 +1938,7 @@ export default function App() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
                   <div className="space-y-1">
                     <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('active_listings' as any)}</p>
-                    <p className="text-3xl sm:text-4xl font-black">{items.filter(i => i.seller_id === (session?.user?.id || '')).length}</p>
+                    <p className="text-3xl sm:text-4xl font-black">{sellerItems.filter(i => i.status === 'available').length}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('sold_products' as any)}</p>
@@ -2090,17 +2091,22 @@ export default function App() {
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
                       <h3 className="rm-section-title">{t('in_sale')}</h3>
-                      <span className="text-ios-gray text-xs font-medium">{items.filter(i => i.seller_id === (session?.user?.id || '')).length} prodotti</span>
+                      <span className="text-ios-gray text-xs font-medium">{sellerItems.filter(i => i.status === 'available').length} attivi · {sellerItems.filter(i => i.status === 'sold').length} venduti</span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                      {items.filter(i => i.seller_id === (session?.user?.id || '')).length === 0 ? (
+                      {sellerItems.length === 0 ? (
                         <p className="col-span-full text-xs text-ios-gray py-8 text-center border-2 border-dashed rounded-3xl">{t('no_saved_items')}</p>
                       ) : (
-                        items.filter(i => i.seller_id === (session?.user?.id || '')).map((item) => (
-                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-2 group cursor-pointer hover:shadow-xl transition-all">
+                        sellerItems.map((item) => (
+                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-2 group cursor-pointer hover:shadow-xl transition-all relative">
                             <div className="aspect-square rounded-2xl overflow-hidden mb-2">
                               <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                             </div>
+                            {item.status === 'sold' && (
+                              <div className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center">
+                                <span className="text-white text-[10px] font-black uppercase tracking-widest bg-black/60 px-2 py-1 rounded-full">Venduto</span>
+                              </div>
+                            )}
                             <p className="text-[10px] font-bold truncate px-1">{item.title}</p>
                             <p className="text-[10px] text-brand-end font-black px-1">€{item.price}</p>
                           </div>
