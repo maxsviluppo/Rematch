@@ -315,6 +315,8 @@ export default function App() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState({ show: false, title: '', message: '' });
+  const [showErrorModal, setShowErrorModal] = useState({ show: false, title: '', message: '' });
+  const [itemToDelete, setItemToDelete] = useState<number | null>(null);
 
   // Form states
   const [newItem, setNewItem] = useState({
@@ -689,11 +691,19 @@ export default function App() {
       setSession(null);
       setCurrentUser(null);
       setShowDeleteConfirm(false);
+      setShowSuccessModal({
+        show: true,
+        title: "Account Eliminato",
+        message: "Il tuo account è stato rimosso con successo. Ci dispiace vederti andare via!"
+      });
       goTo('home');
-      alert("Account eliminato con successo.");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Errore durante l'eliminazione dell'account.");
+      setShowErrorModal({
+        show: true,
+        title: "Errore",
+        message: "Non è stato possibile eliminare l'account. Riprova più tardi."
+      });
     } finally {
       setLoading(false);
     }
@@ -866,25 +876,41 @@ export default function App() {
       await fetchData();
     } catch (err: any) {
       console.error(err);
-      alert("Errore: " + (err.message || "Errore sconosciuto"));
+      setShowErrorModal({
+        show: true,
+        title: "Errore Pubblicazione",
+        message: err.message || "Non è stato possibile pubblicare l'annuncio. Riprova più tardi."
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteItem = async (itemId: number) => {
-    if (!window.confirm("Sei sicuro di voler eliminare definitivamente questo annuncio? Questa azione è irreversibile.")) return;
+    setItemToDelete(itemId);
+  };
+
+  const confirmDeleteItem = async () => {
+    if (!itemToDelete) return;
     setLoading(true);
     try {
-      const { error } = await supabase.from('items').delete().eq('id', itemId);
-      if (error) throw error;
-      alert("Annuncio eliminato definitivamente.");
+      const { error } = await supabase.from('items').delete().eq('id', itemToDelete);
+      setShowSuccessModal({
+        show: true,
+        title: "Annuncio Eliminato",
+        message: "L'annuncio è stato rimosso definitivamente dal marketplace."
+      });
       setSelectedItem(null);
       await fetchData();
     } catch (err: any) {
-      alert("Errore durante l'eliminazione: " + err.message);
+      setShowErrorModal({
+        show: true,
+        title: "Errore Eliminazione",
+        message: err.message || "Non è stato possibile eliminare l'annuncio."
+      });
     } finally {
       setLoading(false);
+      setItemToDelete(null);
     }
   };
 
@@ -977,7 +1003,11 @@ export default function App() {
 
   const handleCheckout = async (shippingDetails: any) => {
     if (!activeProposal || !currentUser) {
-      alert("Devi essere loggato per procedere al pagamento.");
+      setShowErrorModal({
+        show: true,
+        title: "Accesso Richiesto",
+        message: "Devi essere loggato per procedere al pagamento."
+      });
       return;
     }
     setLoading(true);
@@ -1044,7 +1074,11 @@ export default function App() {
     } catch (err: any) {
       console.error("Checkout Error:", err);
       const msg = typeof err === 'string' ? err : (err?.message || JSON.stringify(err));
-      alert("Errore durante il checkout: " + msg);
+      setShowErrorModal({
+        show: true,
+        title: "Errore Checkout",
+        message: msg
+      });
     } finally {
       setLoading(false);
     }
@@ -1052,7 +1086,11 @@ export default function App() {
 
   const handleShip = async (transactionId: number, trackingInfo: { tracking_id: string, courier: string, seller_iban: string }) => {
     if (!transactionId) {
-      alert("ID Transazione non trovato.");
+      setShowErrorModal({
+        show: true,
+        title: "Errore",
+        message: "ID Transazione non trovato."
+      });
       return;
     }
     setLoading(true);
@@ -1069,13 +1107,21 @@ export default function App() {
         .eq('id', transactionId);
 
       if (error) throw new Error(error.message);
-
-      alert(t('confirm_shipping_cta') + " OK!");
+      
+      setShowSuccessModal({
+        show: true,
+        title: t('success_title' as any),
+        message: t('shipping_success_msg' as any)
+      });
       await fetchData();
     } catch (err: any) {
       console.error("SHIPMENT ERROR:", err);
-      const msg = typeof err === 'string' ? err : (err?.message || JSON.stringify(err));
-      alert(msg);
+      const msg = typeof err === 'string' ? err : (err?.message || "Errore durante la spedizione.");
+      setShowErrorModal({
+        show: true,
+        title: "Errore Spedizione",
+        message: msg
+      });
     } finally {
       setLoading(false);
     }
@@ -1090,12 +1136,20 @@ export default function App() {
 
       if (error) throw new Error(error.message);
 
-      alert(t('item_arrived'));
+      setShowSuccessModal({
+        show: true,
+        title: t('success_title' as any),
+        message: t('delivery_success_msg' as any)
+      });
       fetchData();
     } catch (err: any) {
       console.error(err);
-      const msg = typeof err === 'string' ? err : (err?.message || JSON.stringify(err));
-      alert(msg);
+      const msg = typeof err === 'string' ? err : (err?.message || "Errore durante la conferma.");
+      setShowErrorModal({
+        show: true,
+        title: "Errore Conferma",
+        message: msg
+      });
     }
   };
 
@@ -1112,7 +1166,11 @@ export default function App() {
 
       if (error) throw error;
 
-      alert("Grazie per la tua recensione!");
+      setShowSuccessModal({
+        show: true,
+        title: t('success_title' as any),
+        message: t('review_success_msg' as any)
+      });
       setReviewState({ rating: 0, comment: '', transactionId: null });
       fetchData();
     } catch (err) {
@@ -1136,7 +1194,12 @@ export default function App() {
 
       if (error) throw error;
       if (insertedReq) await runMatching(insertedReq.id);
-      alert("Ricerca salvata! Ti avviseremo quando troveremo un match.");
+      
+      setShowSuccessModal({
+        show: true,
+        title: "Ricerca Salvata",
+        message: "Ti avviseremo tramite notifica appena troveremo un match perfetto!"
+      });
       await fetchData();
     } catch (err) {
       console.error(err);
@@ -2860,7 +2923,7 @@ export default function App() {
               <ul className="space-y-3">
                 <li><span className="text-ios-gray hover:text-ios-label cursor-default transition-colors text-sm font-bold block">{t('help_center')}</span><span className="text-[10px] text-ios-gray/60 font-medium">{t('help_desc')}</span></li>
                 <li><span className="text-ios-gray hover:text-ios-label cursor-default transition-colors text-sm font-bold block">{t('security')}</span><span className="text-[10px] text-ios-gray/60 font-medium">{t('security_desc')}</span></li>
-                <li><button onClick={() => alert("Sezione Contatti in arrivo...")} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-bold">{t('contacts')}</button></li>
+                <li><button onClick={() => setShowErrorModal({ show: true, title: "Contatti", message: "La sezione contatti sarà disponibile a breve." })} className="text-ios-gray hover:text-brand-end transition-colors text-sm font-bold">{t('contacts')}</button></li>
               </ul>
             </div>
 
@@ -2941,22 +3004,99 @@ export default function App() {
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="w-full max-w-sm bg-white rounded-[2.5rem] overflow-hidden shadow-2xl"
             >
-              <div className="p-8 text-center space-y-4">
-                <div className="w-16 h-16 bg-green-50 text-green-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle2 size={32} />
+              <div className="p-10 text-center space-y-6">
+                <motion.div 
+                  initial={{ rotate: -10, scale: 0.8 }}
+                  animate={{ rotate: 0, scale: 1.1 }}
+                  transition={{ type: "spring", stiffness: 200 }}
+                  className="w-20 h-20 bg-green-500 text-white rounded-[2rem] flex items-center justify-center mx-auto mb-2 shadow-lg shadow-green-500/20"
+                >
+                  <CheckCircle2 size={40} strokeWidth={3} />
+                </motion.div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-black tracking-tight text-ios-label">{showSuccessModal.title}</h3>
+                  <p className="text-ios-gray text-sm leading-relaxed font-bold">
+                    {showSuccessModal.message}
+                  </p>
                 </div>
-                <h3 className="text-2xl font-black tracking-tight">{showSuccessModal.title}</h3>
+              </div>
+
+              <div className="p-6 pt-0">
+                <button
+                  onClick={() => setShowSuccessModal({ ...showSuccessModal, show: false })}
+                  className="w-full py-5 bg-black text-white font-black rounded-2xl active:scale-95 transition-all text-xs uppercase tracking-[0.2em] shadow-xl"
+                >
+                  {t('close' as any)}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Error Modal */}
+        {showErrorModal.show && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-sm bg-white rounded-[2.5rem] overflow-hidden shadow-2xl"
+            >
+              <div className="p-10 text-center space-y-6">
+                <div className="w-20 h-20 bg-red-50 text-red-500 rounded-[2rem] flex items-center justify-center mx-auto mb-2 border-4 border-red-50">
+                  <XCircle size={40} strokeWidth={3} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-black tracking-tight text-ios-label">{showErrorModal.title}</h3>
+                  <p className="text-ios-gray text-sm leading-relaxed font-bold">
+                    {showErrorModal.message}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-6 pt-0">
+                <button
+                  onClick={() => setShowErrorModal({ ...showErrorModal, show: false })}
+                  className="w-full py-5 bg-ios-secondary text-ios-label font-black rounded-2xl active:scale-95 transition-all text-xs uppercase tracking-[0.2em]"
+                >
+                  Indietro
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {/* Item Delete Confirmation Modal */}
+        {itemToDelete !== null && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-sm bg-white rounded-[2.5rem] overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 text-center space-y-4">
+                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                  <Trash2 size={32} />
+                </div>
+                <h3 className="text-2xl font-black tracking-tight">Elimina Annuncio?</h3>
                 <p className="text-ios-gray text-sm leading-relaxed font-medium">
-                  {showSuccessModal.message}
+                  Sei sicuro di voler eliminare questo annuncio? Questa azione non può essere annullata.
                 </p>
               </div>
 
-              <div className="p-4 bg-ios-secondary/30">
+              <div className="p-4 bg-ios-secondary/30 flex flex-col gap-2">
                 <button
-                  onClick={() => setShowSuccessModal({ ...showSuccessModal, show: false })}
-                  className="w-full py-4 bg-gradient-to-br from-brand-start to-brand-end text-white font-black rounded-2xl shadow-lg shadow-brand-end/25 active:scale-95 transition-all text-sm uppercase tracking-widest"
+                  onClick={confirmDeleteItem}
+                  disabled={loading}
+                  className="w-full py-4 bg-red-500 text-white font-black rounded-2xl shadow-lg shadow-red-500/25 active:scale-95 transition-all text-sm uppercase tracking-widest disabled:opacity-50"
                 >
-                  {t('close' as any)}
+                  {loading ? 'Eliminazione...' : 'Sì, elimina'}
+                </button>
+                <button
+                  onClick={() => setItemToDelete(null)}
+                  className="w-full py-4 bg-white text-ios-label font-black rounded-2xl active:scale-95 transition-all text-sm border border-black/5"
+                >
+                  Annulla
                 </button>
               </div>
             </motion.div>

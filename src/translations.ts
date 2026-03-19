@@ -160,7 +160,10 @@ export const translations = {
     shipping_to: "Spedizione a:",
     days_remaining: "giorni rimanenti",
     expired_badge: "Scaduto!",
-    go_to_dashboard: "Vai alla Dashboard"
+    go_to_dashboard: "Vai alla Dashboard",
+    shipping_success_msg: "Spedizione confermata con successo! Il codice tracking è stato inviato all'acquirente.",
+    delivery_success_msg: "Ricezione confermata! Grazie per aver completato l'acquisto su Rematch.",
+    review_success_msg: "Recensione inviata con successo! Grazie per il tuo feedback."
   },
   en: {
     home: "Home",
@@ -319,7 +322,10 @@ export const translations = {
     shipping_to: "Shipping to:",
     days_remaining: "days remaining",
     expired_badge: "Expired!",
-    go_to_dashboard: "Go to Dashboard"
+    go_to_dashboard: "Go to Dashboard",
+    shipping_success_msg: "Shipment confirmed successfully! The tracking code has been sent to the buyer.",
+    delivery_success_msg: "Receipt confirmed! Thank you for completing your purchase on Rematch.",
+    review_success_msg: "Review submitted successfully! Thank you for your feedback."
   },
   es: {
     home: "Inicio",
@@ -472,7 +478,10 @@ export const translations = {
     review_comment: "Comentario",
     submit_review: "Enviar Reseña",
     no_phone_notice: "Nota: No se proporciona el teléfono por privacidad. Usa el chat si es necesario.",
-    bank_details: "Datos Bancarios (Transferencia)"
+    bank_details: "Datos Bancarios (Transferencia)",
+    shipping_success_msg: "¡Envío confirmado con éxito! El código de seguimiento ha sido enviado al comprador.",
+    delivery_success_msg: "¡Recepción confirmada! Gracias por completar tu compra en Rematch.",
+    review_success_msg: "¡Reseña enviada con éxito! Gracias por tus comentarios."
   },
   fr: {
     home: "Accueil",
@@ -625,7 +634,10 @@ export const translations = {
     review_comment: "Commentaire",
     submit_review: "Envoyer l'Avis",
     no_phone_notice: "Note: Le numéro n'est pas fourni par confidentialité. Utilisez le chat si besoin.",
-    bank_details: "Coordonnées Bancaires (Virement)"
+    bank_details: "Coordonnées Bancaires (Virement)",
+    shipping_success_msg: "Expédition confirmée avec succès ! Le code de suivi a été envoyé à l'acheteur.",
+    delivery_success_msg: "Réception confirmée ! Merci d'avoir complété votre achat sur Rematch.",
+    review_success_msg: "Avis envoyé avec succès ! Merci pour votre retour."
   },
   de: {
     home: "Startseite",
@@ -778,7 +790,10 @@ export const translations = {
     review_comment: "Kommentar",
     submit_review: "Bewertung abschicken",
     no_phone_notice: "Hinweis: Telefonnummer wird aus Datenschutzgründen nicht bereitgestellt.",
-    bank_details: "Bankverbindung (Überweisung)"
+    bank_details: "Bankverbindung (Überweisung)",
+    shipping_success_msg: "Versand erfolgreich bestätigt! Die Sendungsnummer wurde an den Käufer gesendet.",
+    delivery_success_msg: "Empfang bestätigt! Vielen Dank für Ihren Einkauf bei Rematch.",
+    review_success_msg: "Bewertung erfolgreich abgeschickt! Vielen Dank für Ihr Feedback."
   }
 };
 
