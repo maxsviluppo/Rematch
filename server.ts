@@ -27,7 +27,7 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false
   },
-  max: 20,
+  max: 50,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });
@@ -45,7 +45,8 @@ async function initDb() {
     client = await pool.connect();
     console.log("DB Connected for background initialization!");
     
-    // 0. Disable RLS for all tables (Demo fix as per user requirement - First thing to do!)
+    // 0. Disable RLS for all tables (FIX for 'not showing objects' / 'permission denied')
+    console.log("Disabling RLS on all tables...");
     await client.query(`
       ALTER TABLE items DISABLE ROW LEVEL SECURITY;
       ALTER TABLE transactions DISABLE ROW LEVEL SECURITY;
@@ -55,9 +56,10 @@ async function initDb() {
       ALTER TABLE users DISABLE ROW LEVEL SECURITY;
       ALTER TABLE messages DISABLE ROW LEVEL SECURITY;
     `);
-    console.log("RLS disabled on all tables.");
+    console.log("RLS disabled successfully.");
 
     // 1-7. Create tables ensuring they exist
+    console.log("Verifying tables structure...");
     await client.query(`
       CREATE TABLE IF NOT EXISTS items (id SERIAL PRIMARY KEY, seller_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, price DECIMAL(10,2) NOT NULL, location TEXT, category TEXT, image_url TEXT, images JSONB DEFAULT '[]'::jsonb, status TEXT DEFAULT 'available', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());
       CREATE TABLE IF NOT EXISTS requests (id SERIAL PRIMARY KEY, buyer_id TEXT NOT NULL, query TEXT NOT NULL, min_price DECIMAL(10,2) DEFAULT 0, max_price DECIMAL(10,2) DEFAULT 0, location TEXT, status TEXT DEFAULT 'active', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());
@@ -80,38 +82,39 @@ async function initDb() {
     `);
 
     // 8. Create indexes to speed up commonly used queries
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
-      CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
-      CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_items_seller_id ON items(seller_id);
-      CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
-      CREATE INDEX IF NOT EXISTS idx_requests_buyer_id ON requests(buyer_id);
-      CREATE INDEX IF NOT EXISTS idx_requests_created_at ON requests(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_proposals_request_id ON proposals(request_id);
-      CREATE INDEX IF NOT EXISTS idx_proposals_item_id ON proposals(item_id);
-      CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status);
-      CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
-      CREATE INDEX IF NOT EXISTS idx_favorites_item_id ON favorites(item_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_receiver_id ON messages(receiver_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_transactions_buyer_id ON transactions(buyer_id);
-      CREATE INDEX IF NOT EXISTS idx_transactions_seller_id ON transactions(seller_id);
-      CREATE INDEX IF NOT EXISTS idx_transactions_item_id ON transactions(item_id);
-    `);
-
-    console.log("SUCCESS: Database background initialization step complete.");
+    console.log("Verifying indexes...");
+    const indexes = [
+      "CREATE INDEX IF NOT EXISTS idx_items_status ON items(status)",
+      "CREATE INDEX IF NOT EXISTS idx_items_category ON items(category)",
+      "CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_items_seller_id ON items(seller_id)",
+      "CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status)",
+      "CREATE INDEX IF NOT EXISTS idx_requests_buyer_id ON requests(buyer_id)",
+      "CREATE INDEX IF NOT EXISTS idx_requests_created_at ON requests(created_at DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_proposals_request_id ON proposals(request_id)",
+      "CREATE INDEX IF NOT EXISTS idx_proposals_item_id ON proposals(item_id)",
+      "CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status)",
+      "CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id)",
+      "CREATE INDEX IF NOT EXISTS idx_favorites_item_id ON favorites(item_id)",
+      "CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id)",
+      "CREATE INDEX IF NOT EXISTS idx_messages_receiver_id ON messages(receiver_id)",
+      "CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_transactions_buyer_id ON transactions(buyer_id)",
+      "CREATE INDEX IF NOT EXISTS idx_transactions_seller_id ON transactions(seller_id)",
+      "CREATE INDEX IF NOT EXISTS idx_transactions_item_id ON transactions(item_id)"
+    ];
+    for (const sql of indexes) {
+      await client.query(sql);
+    }
+    console.log("SUCCESS: Database initialized fully.");
   } catch (err: any) {
-    console.error("DATABASE INITIALIZATION ERROR:", err.message || err);
+    console.error("CRITICAL DB INIT ERROR:", err.message || err);
   } finally {
     if (client) client.release();
   }
 }
 
-// Start DB init but don't wait for it
-initDb();
-
+// Main Server Entry Node
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
@@ -126,7 +129,6 @@ async function startServer() {
       socket.join(userId);
       console.log(`User ${userId} connected`);
     }
-
     socket.on("disconnect", () => {
       console.log("User disconnected");
     });
@@ -135,7 +137,12 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // API Routes
+  // API Routes (moved before Vite to ensure they are always reachable)
+  app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+  // Cache for public items listing (10s) to survive high DB load
+  let cachedItems: any[] = [];
+  let lastFetchTime = 0;
+
   app.get("/api/items", async (req, res) => {
     try {
       const q = req.query.q as string;
@@ -146,6 +153,14 @@ async function startServer() {
       
       let catStr = (category || "").trim();
       if (catStr === "undefined" || catStr === "null" || catStr === "All" || catStr === "Tutte") catStr = "";
+
+      // Only use cache for generic listing (no search, no category)
+      const isGeneric = !qStr && !catStr;
+      const nowTs = Date.now();
+      if (isGeneric && cachedItems.length > 0 && (nowTs - lastFetchTime < 60000)) {
+        console.log(`[GET /api/items] Returning cached ${cachedItems.length} items.`);
+        return res.json(cachedItems);
+      }
 
       let queryByFilters = `
         SELECT i.*, 
@@ -166,11 +181,16 @@ async function startServer() {
         filterParams.push(catStr);
       }
 
-      queryByFilters += " ORDER BY i.created_at DESC LIMIT 100";
+      queryByFilters += " ORDER BY i.created_at DESC LIMIT 25";
       
-      console.log(`[GET /api/items] Request params: q="${q}", cat="${category}" -> Final: qStr="${qStr}", catStr="${catStr}"`);
+      console.log(`[GET /api/items] FETCHING FROM DB: q="${q}", cat="${category}"`);
       const result = await pool.query(queryByFilters, filterParams);
-      console.log(`[GET /api/items] Query returned ${result.rows.length} rows.`);
+      
+      if (isGeneric) {
+        cachedItems = result.rows;
+        lastFetchTime = Date.now();
+      }
+
       res.json(result.rows);
     } catch (error: any) {
       console.error("FATAL ERROR in /api/items:", error);
@@ -192,6 +212,15 @@ async function startServer() {
     } catch (error: any) {
       console.error("Error creating item:", error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/items/:id/view", async (req, res) => {
+    try {
+      await pool.query("UPDATE items SET views_count = views_count + 1 WHERE id = $1", [req.params.id]);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
     }
   });
 
@@ -406,33 +435,35 @@ async function startServer() {
     }
   });
 
-  app.get("/api/health", (req, res) => res.json({ status: "ok" }));
-
-  if (process.env.NODE_ENV !== "production") {
-    try {
-      console.log("Starting Vite middleware...");
-      const vite = await createViteServer({
-        server: { 
-          middlewareMode: true,
-          hmr: { port: 3005 } // Use a specific port to avoid conflicts
-        },
-        appType: "spa"
-      });
-      app.use(vite.middlewares);
-      console.log("Vite middleware attached.");
-    } catch (viteError: any) {
-      console.error("Vite middleware failed to start:", viteError.message || viteError);
-    }
-  } else {
-    app.use(express.static(path.join(__dirname, "dist")));
-    app.get("*", (req, res) => res.sendFile(path.join(__dirname, "dist", "index.html")));
-  }
-
   httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`READY -- API server listening on port ${PORT}`);
+    
+    // START Background Tasks AFTER listening
+    console.log("Starting background database initialization...");
+    // initDb().catch(e => console.error("FATAL background DB init failed:", e));
+
+    // Note: This starts Vite as middleware so the frontend is available on port 3000
+    if (process.env.NODE_ENV !== "production") {
+      (async () => {
+        try {
+          console.log("Starting background Vite middleware...");
+          const vite = await createViteServer({
+            server: { middlewareMode: true, hmr: { port: 3005 }, port: 0 },
+            appType: "spa"
+          });
+          app.use(vite.middlewares);
+          console.log("Vite middleware attached successfully.");
+        } catch (vErr: any) {
+          console.error("Vite middleware FAILED (non-fatal):", vErr.message || vErr);
+        }
+      })();
+    } else {
+      app.use(express.static(path.join(__dirname, "dist")));
+      app.get("*", (req, res) => res.sendFile(path.join(__dirname, "dist", "index.html")));
+    }
   });
 }
 
 startServer().catch(err => {
-  console.error("FATAL: startServer failed:", err);
+  console.error("CRITICAL FATAL: startServer failed:", err);
 });

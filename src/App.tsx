@@ -88,6 +88,52 @@ const CATEGORIES = [
 // --- HELPER COMPONENTS ---
 
 
+
+// Compact card for completed PURCHASES (buyer side)
+const CompletedPurchaseCard = ({ tr, t }: any) => {
+  const stars = tr.review_rating || 0;
+  return (
+    <motion.div layout className="ios-card p-3 group cursor-default hover:shadow-lg transition-all relative overflow-hidden">
+      <div className="aspect-square rounded-2xl overflow-hidden mb-2 relative">
+        <img src={tr.image_url} alt={tr.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+        <div className="absolute bottom-2 left-2 right-2">
+          <p className="text-white text-[9px] font-black truncate">{tr.title}</p>
+          <p className="text-white/80 text-[9px] font-bold">€{tr.price}</p>
+        </div>
+        <div className="absolute top-2 right-2 px-2 py-0.5 bg-green-500 text-white text-[8px] font-black rounded-full uppercase tracking-wide">
+          Ricevuto
+        </div>
+      </div>
+      {/* Star rating display */}
+      <div className="flex items-center justify-center gap-0.5 mt-1">
+        {[1,2,3,4,5].map(s => (
+          <Star key={s} size={10} className={s <= stars ? 'text-orange-500' : 'text-gray-200'} fill={s <= stars ? 'currentColor' : 'none'} />
+        ))}
+        {stars === 0 && <span className="text-[8px] text-ios-gray ml-1">N/R</span>}
+      </div>
+    </motion.div>
+  );
+};
+
+// Compact card for completed SALES (seller side)
+const CompletedSaleCard = ({ tr }: any) => (
+  <motion.div layout className="ios-card p-3 group cursor-default hover:shadow-lg transition-all relative overflow-hidden">
+    <div className="aspect-square rounded-2xl overflow-hidden mb-2 relative">
+      <img src={tr.image_url} alt={tr.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+      <div className="absolute bottom-2 left-2 right-2">
+        <p className="text-white text-[9px] font-black truncate">{tr.title}</p>
+        <p className="text-white/80 text-[9px] font-bold">€{tr.price}</p>
+      </div>
+      <div className="absolute top-2 right-2 px-2 py-0.5 bg-ios-blue text-white text-[8px] font-black rounded-full uppercase tracking-wide">
+        Venduto
+      </div>
+    </div>
+    <p className="text-[9px] text-center text-ios-gray font-bold truncate px-1">Accredito al 15°</p>
+  </motion.div>
+);
+
 const TransactionCard = ({ tr, isSeller, t, currentUser, loading, handleShip, handleConfirmArrival, setReviewState, reviewState, handleSubmitReview }: any) => {
   const deadlineDate = new Date(tr.shipping_deadline);
   const now = new Date();
@@ -201,9 +247,23 @@ const TransactionCard = ({ tr, isSeller, t, currentUser, loading, handleShip, ha
                   </div>
                 )}
                 {tr.status === 'delivered' && (
-                  <div className="p-5 bg-green-500/10 text-green-600 rounded-2xl border border-green-500/20">
-                    <p className="font-black text-sm uppercase tracking-tight mb-2">Match Completato!</p>
-                    <p className="text-xs font-medium leading-relaxed">{t('payment_processed_in_3_days')}</p>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 p-5 bg-green-500/10 text-green-700 rounded-2xl border border-green-500/20">
+                      <CheckCircle2 size={28} className="shrink-0" />
+                      <div>
+                        <p className="font-black text-sm uppercase tracking-tight">Oggetto Consegnato!</p>
+                        <p className="text-xs font-medium opacity-80 mt-0.5">L'acquirente ha confermato la ricezione.</p>
+                      </div>
+                    </div>
+                    <div className="p-5 bg-ios-blue/5 rounded-2xl border border-ios-blue/10 space-y-2">
+                      <div className="flex items-center gap-2 text-ios-blue">
+                        <Star size={16} fill="currentColor" />
+                        <p className="font-black text-sm uppercase tracking-wide">Grazie per aver venduto su ReMatch!</p>
+                      </div>
+                      <p className="text-xs text-ios-gray font-medium leading-relaxed">
+                        Il ricavato netto di <span className="font-black text-ios-label">€{tr.price}</span> verrà accreditato entro il <span className="font-black text-ios-blue">15 del mese</span> corrente o del mese successivo, al netto delle commissioni di piattaforma.
+                      </p>
+                    </div>
                   </div>
                 )}
               </>
@@ -232,7 +292,7 @@ const TransactionCard = ({ tr, isSeller, t, currentUser, loading, handleShip, ha
                     </button>
                   </div>
                 )}
-                {tr.status === 'delivered' && (
+                {tr.status === 'delivered' && !tr.review_rating && (
                   <div className="space-y-6">
                     <div className="p-4 bg-green-500/10 text-green-600 rounded-2xl font-black text-sm uppercase text-center border border-green-500/20">
                       {t('item_arrived')}
@@ -275,6 +335,8 @@ const TransactionCard = ({ tr, isSeller, t, currentUser, loading, handleShip, ha
     </motion.div>
   );
 };
+
+
 
 export default function App() {
   const [session, setSession] = useState<any>(null);
@@ -540,7 +602,7 @@ export default function App() {
 
       try {
         // Step 1: Try Local Proxy first (faster and handles pool better)
-        const localRes = await fetch('/api/items', { signal: AbortSignal.timeout(5000) });
+        const localRes = await fetch('/api/items', { signal: AbortSignal.timeout(30000) });
         if (localRes.ok) {
           allItems = await localRes.json();
         } else {
@@ -583,6 +645,14 @@ export default function App() {
       console.error("Items fetch error:", err);
     }
   };
+
+  useEffect(() => {
+    if (selectedItem?.id) {
+      fetch(`/api/items/${selectedItem.id}/view`, { method: 'POST' }).catch(console.error);
+      // Optimistically increment for current session view
+      setItems(prev => prev.map(i => i.id === selectedItem.id ? { ...i, views_count: (i.views_count || 0) + 1 } : i));
+    }
+  }, [selectedItem?.id]);
 
   const fetchUserRelatedData = async () => {
     if (!session?.user?.id) return;
@@ -1487,11 +1557,14 @@ export default function App() {
                             €{item.price}
                           </div>
                         </div>
-                        <div className="p-3 sm:p-4 space-y-1.5">
+                        <div className="p-3 sm:p-4 space-y-2">
                           <h4 className="font-bold text-sm truncate">{item.title}</h4>
-                          <div className="flex items-center justify-between text-xs text-ios-gray">
+                          <div className="flex items-center justify-between text-[10px] text-ios-gray">
                             <span className="flex items-center gap-1"><MapPin size={10} />{item.location}</span>
-                            <ArrowRight size={12} className="opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+                            <div className="flex items-center gap-2 font-bold bg-black/[0.03] px-2 py-0.5 rounded-full">
+                              <span className="flex items-center gap-0.5"><Eye size={10} /> {item.views_count || 0}</span>
+                              <span className="flex items-center gap-0.5"><Heart size={10} /> {item.LikeCount || 0}</span>
+                            </div>
                           </div>
                         </div>
                       </motion.div>
@@ -2179,20 +2252,25 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 4. My Purchases (Active) */}
+                  {/* 4. My Purchases — Active + Completed */}
                   <div className="space-y-6">
+                    {/* Active Purchases */}
                     <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">Acquisti</h3>
-                      <span className="text-ios-gray text-xs font-medium">{transactions.filter(t => t.buyer_id === currentUser?.id).length} attivi</span>
+                      <h3 className="rm-section-title">Acquisti in Corso</h3>
+                      <span className="text-ios-gray text-xs font-medium">
+                        {transactions.filter(t => t.buyer_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || (t.status === 'delivered' && !t.review_rating))).length} attivi
+                      </span>
                     </div>
 
-                    {transactions.filter(t => t.buyer_id === currentUser?.id).length === 0 ? (
+                    {transactions.filter(t => t.buyer_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || (t.status === 'delivered' && !t.review_rating))).length === 0 ? (
                       <div className="ios-card p-8 text-center bg-ios-secondary/10 border-2 border-dashed border-black/[0.03]">
-                        <p className="text-ios-gray text-xs">Nessun acquisto attivo.</p>
+                        <p className="text-ios-gray text-xs">Nessun acquisto in corso.</p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-6">
-                        {transactions.filter(t => t.buyer_id === currentUser?.id).map(tr => (
+                        {transactions
+                          .filter(t => t.buyer_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || (t.status === 'delivered' && !t.review_rating)))
+                          .map(tr => (
                           <TransactionCard 
                             key={tr.id} 
                             tr={tr} 
@@ -2209,22 +2287,46 @@ export default function App() {
                         ))}
                       </div>
                     )}
+
+                    {/* Completed Purchases Grid */}
+                    {transactions.filter(t => t.buyer_id === currentUser?.id && (t.status === 'completed' || (t.status === 'delivered' && t.review_rating))).length > 0 && (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-black uppercase tracking-[0.2em] text-ios-gray">Acquistati</h4>
+                          <span className="text-[10px] text-ios-gray font-bold">
+                            {transactions.filter(t => t.buyer_id === currentUser?.id && (t.status === 'completed' || (t.status === 'delivered' && t.review_rating))).length} articoli
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                          {transactions
+                            .filter(t => t.buyer_id === currentUser?.id && (t.status === 'completed' || (t.status === 'delivered' && t.review_rating)))
+                            .map(tr => (
+                              <CompletedPurchaseCard key={tr.id} tr={tr} t={t} />
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* 5. My Sales (Transactional) */}
+                  {/* 5. My Sales — Active + Completed */}
                   <div className="space-y-6">
+                    {/* Active Sales */}
                     <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">Vendite Attive</h3>
-                      <span className="text-ios-gray text-xs font-medium">{transactions.filter(t => t.seller_id === currentUser?.id).length} attive</span>
+                      <h3 className="rm-section-title">Vendite in Corso</h3>
+                      <span className="text-ios-gray text-xs font-medium">
+                        {transactions.filter(t => t.seller_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || t.status === 'delivered')).length} attive
+                      </span>
                     </div>
 
-                    {transactions.filter(t => t.seller_id === currentUser?.id).length === 0 ? (
+                    {transactions.filter(t => t.seller_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || t.status === 'delivered')).length === 0 ? (
                       <div className="ios-card p-8 text-center bg-ios-secondary/10 border-2 border-dashed border-black/[0.03]">
-                        <p className="text-ios-gray text-xs">Nessuna vendita attiva.</p>
+                        <p className="text-ios-gray text-xs">Nessuna vendita in corso.</p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-6">
-                        {transactions.filter(t => t.seller_id === currentUser?.id).map(tr => (
+                        {transactions
+                          .filter(t => t.seller_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || t.status === 'delivered'))
+                          .map(tr => (
                           <TransactionCard 
                             key={tr.id} 
                             tr={tr} 
@@ -2241,7 +2343,27 @@ export default function App() {
                         ))}
                       </div>
                     )}
+
+                    {/* Completed Sales Grid */}
+                    {transactions.filter(t => t.seller_id === currentUser?.id && t.status === 'completed').length > 0 && (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-black uppercase tracking-[0.2em] text-ios-gray">Venduti</h4>
+                          <span className="text-[10px] text-ios-gray font-bold">
+                            {transactions.filter(t => t.seller_id === currentUser?.id && t.status === 'completed').length} articoli
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                          {transactions
+                            .filter(t => t.seller_id === currentUser?.id && t.status === 'completed')
+                            .map(tr => (
+                              <CompletedSaleCard key={tr.id} tr={tr} />
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
+
 
                   {/* 6. Saved Items */}
                   <div className="space-y-6">
@@ -2717,15 +2839,19 @@ export default function App() {
 
               <div className="p-6 sm:p-10 overflow-y-auto space-y-8 flex-1">
                 <div className="space-y-4">
-                  <div className="flex flex-wrap gap-2">
-                    <span className="px-3 py-1 bg-ios-blue/10 text-ios-blue text-[10px] font-bold rounded-full uppercase tracking-widest">
+                  <div className="flex flex-wrap gap-3">
+                    <span className="px-3 py-1.5 bg-ios-blue/10 text-ios-blue text-[10px] font-black rounded-full uppercase tracking-widest border border-ios-blue/5">
                       {selectedItem.category}
                     </span>
+                    <div className="flex items-center gap-4 text-ios-gray font-black text-[10px] uppercase tracking-widest px-1">
+                      <span className="flex items-center gap-1.5"><Eye size={14} className="text-ios-gray/40" /> {selectedItem.views_count || 0} {t('views' as any)}</span>
+                      <span className="flex items-center gap-1.5"><Heart size={14} className="text-red-400" /> {selectedItem.LikeCount || 0} {t('likes' as any)}</span>
+                    </div>
                   </div>
-                  <h3 className="text-3xl sm:text-4xl font-black tracking-tight">{selectedItem.title}</h3>
-                  <div className="flex items-center gap-4 text-ios-gray font-medium">
-                    <div className="flex items-center gap-1.5 bg-ios-secondary/50 px-3 py-1.5 rounded-xl border border-black/[0.03]">
-                      <MapPin size={16} />
+                  <h3 className="text-3xl sm:text-5xl font-black tracking-tighter leading-tight text-ios-label">{selectedItem.title}</h3>
+                  <div className="flex items-center gap-4 text-ios-gray font-bold">
+                    <div className="flex items-center gap-2 bg-ios-secondary/30 px-4 py-2 rounded-2xl border border-black/[0.03]">
+                      <MapPin size={18} className="text-ios-gray/50" />
                       <span className="text-sm">{selectedItem.location}</span>
                     </div>
                   </div>
