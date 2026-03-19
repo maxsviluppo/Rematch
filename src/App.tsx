@@ -584,71 +584,44 @@ export default function App() {
 
   const fetchUserRelatedData = async () => {
     if (!session?.user?.id) return;
+    const userId = session.user.id;
+    const now = new Date().toLocaleTimeString();
+    
+    // Separate try-catches so one failure doesn't block the whole dashboard
     try {
-      const userId = session.user.id;
-
-      // Parallel fetch for speed — all via Supabase directly (no Express dependency)
-      const [reqsRes, favsRes, transRes, sellerItemsRes] = await Promise.all([
-        supabase.from('requests').select('*').eq('buyer_id', userId).eq('status', 'active'),
-        supabase.from('favorites').select('item_id, items(*)').eq('user_id', userId),
-        supabase
-          .from('transactions')
-          .select('*')
-          .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('items')
-          .select('*')
-          .eq('seller_id', userId)
-          .order('created_at', { ascending: false })
-      ]);
-
-      console.log('=== DEBUG fetchUserRelatedData ===');
-      console.log('userId:', userId);
-      console.log('transactions → data:', transRes.data, ' error:', transRes.error);
-      console.log('sellerItems → data:', sellerItemsRes.data, ' error:', sellerItemsRes.error);
-      console.log('requests → data:', reqsRes.data, ' error:', reqsRes.error);
-      console.log('=================================');
-
-      if (reqsRes.data) {
-        setUserRequests(reqsRes.data);
-        // Fetch proposals for these requests
-        if (reqsRes.data.length > 0) {
-          const { data: props } = await supabase
-            .from('proposals')
-            .select('*, items(*)')
-            .eq('status', 'pending')
-            .in('request_id', reqsRes.data.map(r => r.id));
-          
-          if (props) {
-            setProposals(props.map(p => ({
-              ...p.items,
-              proposal_id: p.id,
-              request_id: p.request_id,
-              item_id: p.item_id,
-              status: p.status,
-              expires_at: p.expires_at
-            })));
-          }
+      console.log(`[${now}] Dash: Fetching user requests...`);
+      const { data: reqData } = await supabase.from('requests').select('*').eq('buyer_id', userId).eq('status', 'active');
+      if (reqData) {
+        setUserRequests(reqData);
+        if (reqData.length > 0) {
+          const { data: props } = await supabase.from('proposals').select('*, items(*)').eq('status', 'pending').in('request_id', reqData.map(r => r.id));
+          if (props) setProposals(props.map(p => ({ ...p.items, proposal_id: p.id, request_id: p.request_id, item_id: p.item_id, status: p.status, expires_at: p.expires_at })));
         }
       }
+    } catch (e) { console.error("Dash: Req error:", e); }
 
-      if (favsRes.data) {
-        const favItems = favsRes.data.map(f => {
-          if (!f.items) return null;
-          return Array.isArray(f.items) ? f.items[0] : f.items;
-        }).filter(Boolean) as Item[];
-        setFavorites(favItems);
+    try {
+      console.log(`[${now}] Dash: Fetching favorites...`);
+      const { data: favData } = await supabase.from('favorites').select('item_id, items(*)').eq('user_id', userId);
+      if (favData) {
+        setFavorites(favData.map(f => (Array.isArray(f.items) ? f.items[0] : f.items)).filter(Boolean));
       }
+    } catch (e) { console.error("Dash: Fav error:", e); }
 
-      setTransactions(transRes.data || []);
-      setSellerItems(sellerItemsRes.data || []);
-      
-      if (transRes.error) console.error("Transactions Error:", transRes.error);
-      if (sellerItemsRes.error) console.error("SellerItems Error:", sellerItemsRes.error);
-    } catch (err) {
-      console.error("User data fetch error:", err);
-    }
+    try {
+      console.log(`[${now}] Dash: Fetching transactions...`);
+      const { data: transData, error: transErr } = await supabase.from('transactions').select('*').or(`buyer_id.eq.${userId},seller_id.eq.${userId}`).order('created_at', { ascending: false }).limit(20);
+      if (transErr) console.error("Dash: Trans error:", transErr);
+      setTransactions(transData || []);
+    } catch (e) { console.error("Dash: Trans catch:", e); }
+
+    try {
+      console.log(`[${now}] Dash: Fetching seller items...`);
+      const { data: sItems, error: sErr } = await supabase.from('items').select('*').eq('seller_id', userId).limit(50);
+      if (sErr) console.error("Dash: Seller items error:", sErr);
+      console.log(`[${now}] Dash: Found ${sItems?.length || 0} items put in sale by user.`);
+      setSellerItems(sItems || []);
+    } catch (e) { console.error("Dash: Seller catch:", e); }
   };
 
   const fetchData = async () => {
