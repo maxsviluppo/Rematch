@@ -669,41 +669,61 @@ export default function App() {
     if (!userId) return;
     const now = new Date().toLocaleTimeString();
     
-    // Separate try-catches so one failure doesn't block the whole dashboard
+    console.log(`[${now}] Dash: Starting parallel data fetching...`);
+    
+    // Parallelize ALL user-specific data fetching
     try {
-      console.log(`[${now}] Dash: Fetching user requests...`);
-      const { data: reqData } = await supabase.from('requests').select('*').eq('buyer_id', userId).eq('status', 'active');
-      if (reqData) {
-        setUserRequests(reqData);
-        if (reqData.length > 0) {
-          const { data: props } = await supabase.from('proposals').select('*, items(*)').eq('status', 'pending').in('request_id', reqData.map(r => r.id));
-          if (props) setProposals(props.map(p => ({ ...p.items, proposal_id: p.id, request_id: p.request_id, item_id: p.item_id, status: p.status, expires_at: p.expires_at })));
-        }
-      }
-    } catch (e) { console.error("Dash: Req error:", e); }
-
-    try {
-      console.log(`[${now}] Dash: Fetching favorites...`);
-      const { data: favData } = await supabase.from('favorites').select('item_id, items(*)').eq('user_id', userId);
-      if (favData) {
-        setFavorites(favData.map(f => (Array.isArray(f.items) ? f.items[0] : f.items)).filter(Boolean));
-      }
-    } catch (e) { console.error("Dash: Fav error:", e); }
-
-    try {
-      console.log(`[${now}] Dash: Fetching transactions...`);
-      const { data: transData, error: transErr } = await supabase.from('transactions').select('*').or(`buyer_id.eq.${userId},seller_id.eq.${userId}`).order('created_at', { ascending: false }).limit(20);
-      if (transErr) console.error("Dash: Trans error:", transErr);
-      setTransactions(transData || []);
-    } catch (e) { console.error("Dash: Trans catch:", e); }
-
-    try {
-      console.log(`[${now}] Dash: Fetching seller items...`);
-      const { data: sItems, error: sErr } = await supabase.from('items').select('*').eq('seller_id', userId).limit(50);
-      if (sErr) console.error("Dash: Seller items error:", sErr);
-      console.log(`[${now}] Dash: Found ${sItems?.length || 0} items put in sale by user.`);
-      setSellerItems(sItems || []);
-    } catch (e) { console.error("Dash: Seller catch:", e); }
+      await Promise.all([
+        // 1. Fetch Requests & Proposals
+        (async () => {
+          try {
+            const { data: reqData } = await supabase.from('requests').select('*').eq('buyer_id', userId).eq('status', 'active');
+            if (reqData) {
+              setUserRequests(reqData);
+              if (reqData.length > 0) {
+                const { data: props } = await supabase.from('proposals').select('*, items(*)').eq('status', 'pending').in('request_id', reqData.map(r => r.id));
+                if (props) setProposals(props.map(p => ({ ...p.items, proposal_id: p.id, request_id: p.request_id, item_id: p.item_id, status: p.status, expires_at: p.expires_at })));
+              }
+            }
+          } catch (e) { console.error("Dash: Req error:", e); }
+        })(),
+        // 2. Fetch Favorites
+        (async () => {
+          try {
+            const { data: favData } = await supabase.from('favorites').select('item_id, items(*)').eq('user_id', userId);
+            if (favData) {
+              setFavorites(favData.map(f => (Array.isArray(f.items) ? f.items[0] : f.items)).filter(Boolean));
+            }
+          } catch (e) { console.error("Dash: Fav error:", e); }
+        })(),
+        // 3. Fetch Transactions
+        (async () => {
+          try {
+            const { data: transData, error: transErr } = await supabase.from('transactions').select('*').or(`buyer_id.eq.${userId},seller_id.eq.${userId}`).order('created_at', { ascending: false }).limit(20);
+            if (transErr) console.error("Dash: Trans error:", transErr);
+            setTransactions(transData || []);
+          } catch (e) { console.error("Dash: Trans catch:", e); }
+        })(),
+        // 4. Fetch Seller (My) Items
+        (async () => {
+          try {
+            const { data: sItems, error: sErr } = await supabase.from('items').select('*').eq('seller_id', userId).limit(50);
+            if (sErr) console.error("Dash: Seller items error:", sErr);
+            setSellerItems(sItems || []);
+          } catch (e) { console.error("Dash: Seller catch:", e); }
+        })(),
+        // 5. Fetch Messages
+        (async () => {
+          try {
+            const { data: msgs } = await supabase.from('messages').select('*').or(`sender_id.eq.${userId},receiver_id.eq.${userId}`).order('created_at', { ascending: true });
+            if (msgs) setMessages(msgs);
+          } catch (e) { console.error("Dash: Msgs error:", e); }
+        })()
+      ]);
+      console.log(`[${now}] Dash: Parallel fetching completed.`);
+    } catch (err) {
+      console.error("Critical parallel fetch error:", err);
+    }
   };
 
   const fetchData = async () => {
@@ -907,7 +927,7 @@ export default function App() {
   const handleSell = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItem.title || !newItem.price) {
-      alert("Per favore inserisci almeno un titolo e un prezzo.");
+      alert("Per favor inserisci almeno un titolo e un prezzo.");
       return;
     }
 
@@ -1301,7 +1321,7 @@ export default function App() {
         initial={{ y: 0 }}
         animate={{ y: showHeader ? 0 : -100 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
-        className="sticky top-0 z-50 bg-black/95 backdrop-blur-xl px-4 sm:px-6 py-3 sm:py-4 border-b border-white/5"
+        className="sticky top-0 z-50 bg-black px-4 sm:px-6 py-3 sm:py-4 border-b border-white/5"
       >
         <div className="max-w-5xl mx-auto flex justify-between items-center">
           <div className="flex items-center cursor-pointer h-10" onClick={() => goTo('home')}>
@@ -1444,7 +1464,7 @@ export default function App() {
         </div>
       </nav>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+       <main className="max-w-5xl mx-auto px-4 sm:px-6 pt-12 pb-6 sm:pt-20 sm:pb-10">
         {view === 'auth' && (
           <div className="pt-10">
             <Auth onLogin={(id, nome) => {
@@ -1485,8 +1505,7 @@ export default function App() {
                   />
                   <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,rgba(255,165,0,0.08)_0%,transparent_70%)]" />
                 </div>
-                
-                <div className="relative z-10 max-w-4xl w-full space-y-12 mt-12 sm:mt-16">
+                                <div className="relative z-10 max-w-4xl w-full space-y-12 mt-16 sm:mt-24">
                   <div className="space-y-8">
                     <div className="space-y-6">
                       <motion.div 
@@ -1679,116 +1698,105 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="max-w-3xl mx-auto"
+              className="max-w-3xl mx-auto w-full relative"
             >
-              <div className="ios-card p-5 sm:p-10 space-y-6 sm:space-y-8">
-                <div className="page-hero">
-                  <div className="page-hero-icon"><Package size={24} /></div>
-                  <h2>{t('sell_title')}</h2>
-                  <p>{t('sell_desc')}</p>
-                </div>
-
-                <form onSubmit={handleSell} className="space-y-5 sm:space-y-6">
-                  <div className="space-y-3 sm:space-y-4">
-                    <div className="flex items-center justify-between">
-                      <label className="rm-label">{t('item_photos')}</label>
-                      <span className="text-ios-gray text-[10px] font-black uppercase tracking-widest">{imagePreviews.length}/3 {t('photos_count')}</span>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                      {imagePreviews.map((img, idx) => (
-                        <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden shadow-md group">
-                          <img src={img} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={() => removeImage(idx)}
-                            className="absolute top-2 right-2 p-2 bg-black/50 backdrop-blur-xl text-white rounded-lg hover:bg-black/70 transition-all opacity-0 group-hover:opacity-100"
-                          >
-                            <X size={14} />
-                          </button>
-                          {idx === 0 && (
-                            <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-brand-end text-white text-[8px] font-black uppercase rounded-md shadow-sm">
-                              {t('main_photo')}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-
-                      {imagePreviews.length < 3 && (
-                        <label className="aspect-square bg-ios-secondary rounded-2xl border-2 border-dashed border-ios-gray/20 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-ios-secondary/80 transition-all group overflow-hidden">
-                          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-brand-end shadow-md group-hover:scale-105 transition-transform duration-300">
-                            <Plus size={20} />
+              <div className="ios-card space-y-0 overflow-hidden shadow-2xl relative border border-white/10 glass-card">
+                 <div className="relative bg-gradient-to-br from-brand-start to-brand-end p-12 sm:p-24 flex flex-col items-center text-center space-y-4 overflow-hidden">
+                   {/* Mesmerizing Background Elements */}
+                   <motion.div 
+                     animate={{ 
+                       x: [0, 50, 0], 
+                       y: [0, -30, 0],
+                       scale: [1, 1.2, 1] 
+                     }}
+                     transition={{ duration: 10, repeat: Infinity }}
+                     className="absolute -top-[20%] -right-[10%] w-[300px] h-[300px] bg-white/20 blur-[80px] rounded-full"
+                   />
+                   <motion.div 
+                     animate={{ 
+                       x: [0, -40, 0], 
+                       y: [0, 20, 0],
+                       scale: [1.2, 1, 1.2] 
+                     }}
+                     transition={{ duration: 8, repeat: Infinity, delay: 2 }}
+                     className="absolute -bottom-[20%] -left-[10%] w-[250px] h-[250px] bg-brand-start blur-[80px] rounded-full opacity-60"
+                   />
+                   
+                   <motion.div
+                     initial={{ opacity: 0, y: 10 }}
+                     animate={{ opacity: 1, y: 0 }}
+                     className="z-10 flex flex-col items-center"
+                   >
+                     <h2 className="text-4xl sm:text-7xl font-black tracking-tighter text-white drop-shadow-2xl">{t('sell_title')}</h2>
+                     <p className="text-white/80 font-bold max-w-sm text-lg sm:text-2xl mt-2 leading-tight italic uppercase tracking-widest">{t('sell_desc')}</p>
+                   </motion.div>
+                 </div>
+                
+                <div className="p-5 sm:p-10 space-y-8">
+                  <form onSubmit={handleSell} className="space-y-6 sm:space-y-8">
+                    {/* Photos content remains identical, just ensuring correct structure */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="rm-label">{t('item_photos')}</label>
+                        <span className="text-ios-gray text-[10px] font-black uppercase tracking-widest">{imagePreviews.length}/3 {t('photos_count')}</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        {imagePreviews.map((img, idx) => (
+                          <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden shadow-md group">
+                            <img src={img} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
+                            <button type="button" onClick={() => removeImage(idx)} className="absolute top-2 right-2 p-2 bg-black/50 backdrop-blur-xl text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all"><X size={14} /></button>
+                            {idx === 0 && (
+                              <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-brand-end text-white text-[8px] font-black uppercase rounded-md shadow-sm">
+                                {t('main_photo')}
+                              </div>
+                            )}
                           </div>
-                          <p className="text-ios-gray text-[10px] font-black uppercase tracking-wider">{t('add')}</p>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="hidden"
-                            onChange={handleImageChange}
-                          />
-                        </label>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 sm:space-y-4">
-                    <label className="rm-label">{t('title')}</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder={t('placeholder_title')}
-                      className="rm-input-lg"
-                      value={newItem.title}
-                      onChange={e => setNewItem({...newItem, title: e.target.value})}
-                    />
-                  </div>
-
-                  <div className="space-y-3 sm:space-y-4">
-                    <label className="text-sm font-black text-ios-gray ml-2 uppercase tracking-[0.2em]">{t('description')}</label>
-                    <textarea
-                      required
-                      rows={4}
-                      placeholder={t('placeholder_desc')}
-                      className="rm-input-lg resize-none"
-                      value={newItem.description}
-                      onChange={e => setNewItem({...newItem, description: e.target.value})}
-                    />
-                  </div>
-
-                  <div className="space-y-3 sm:space-y-4">
-                    <label className="rm-label">{t('category')}</label>
-                    <div className="relative">
-                      <select
-                        required
-                        className="rm-input-lg appearance-none cursor-pointer w-full text-ios-label"
-                        value={newItem.category}
-                        onChange={e => setNewItem({...newItem, category: e.target.value})}
-                      >
-                        <option value="">{t('all')}</option>
-                        {CATEGORIES.filter(c => c !== 'Tutte').map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
                         ))}
-                      </select>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-ios-gray">
-                        <ChevronRight className="rotate-90" size={18} />
+                        {imagePreviews.length < 3 && (
+                          <label className="aspect-square bg-ios-secondary rounded-2xl border-2 border-dashed border-ios-gray/20 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-ios-secondary/80 transition-all group">
+                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-brand-end shadow-md group-hover:scale-105 transition-transform"><Plus size={20} /></div>
+                            <p className="text-ios-gray text-[10px] font-black uppercase tracking-wider">{t('add')}</p>
+                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageChange} />
+                          </label>
+                        )}
                       </div>
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-                    <div className="space-y-3 sm:space-y-4">
-                      <label className="rm-label">{t('price')} (€)</label>
-                      <input
-                        required
-                        type="number"
-                        placeholder="0.00"
-                        className="rm-input-lg"
-                        value={newItem.price}
-                        onChange={e => setNewItem({...newItem, price: e.target.value})}
-                      />
+                    <div className="space-y-4">
+                      <label className="rm-label">{t('title')}</label>
+                      <input required type="text" placeholder={t('placeholder_title')} className="rm-input-lg" value={newItem.title} onChange={e => setNewItem({...newItem, title: e.target.value})} />
                     </div>
-                    <div className="space-y-3 sm:space-y-4">
+
+                    <div className="space-y-4">
+                      <label className="rm-label">{t('description')}</label>
+                      <textarea required rows={4} placeholder={t('placeholder_desc')} className="rm-input-lg resize-none" value={newItem.description} onChange={e => setNewItem({...newItem, description: e.target.value})} />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        <label className="rm-label">{t('price')} (€)</label>
+                        <input required type="number" placeholder="0.00" className="rm-input-lg" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} />
+                      </div>
+                      <div className="space-y-4">
+                        <label className="rm-label">{t('category')}</label>
+                        <div className="relative">
+                          <select
+                            required
+                            className="rm-input-lg appearance-none w-full"
+                            value={newItem.category}
+                            onChange={e => setNewItem({...newItem, category: e.target.value})}
+                          >
+                            <option value="">{t('all')}</option>
+                            {CATEGORIES.filter(c => c !== 'Tutte').map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          </select>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-ios-gray">
+                            <ChevronRight className="rotate-90" size={18} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
                       <label className="rm-label">{t('location')}</label>
                       <div className="relative">
                         <select
@@ -1842,39 +1850,17 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full mt-8 py-5 sm:py-6 bg-brand-end text-white text-base sm:text-lg font-black rounded-2xl sm:rounded-3xl hover:bg-black transition-all active:scale-[0.98] shadow-2xl shadow-brand-end/30 disabled:opacity-50 flex items-center justify-center gap-3"
-                  >
-                    {loading ? (
-                      <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <Check size={24} />
-                        <span>{isEditingItem ? "Aggiorna Annuncio" : t('put_in_sale')}</span>
-                      </>
-                    )}
-                  </button>
-
-                  {isEditingItem && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEditingItem(false);
-                        setEditingId(null);
-                        setNewItem({ title: '', description: '', price: '', location: '', category: 'Altro', image_url: '', images: [] });
-                        setImagePreviews([]);
-                        setView('dashboard');
-                      }}
-                      className="w-full mt-3 py-4 text-ios-gray font-bold text-sm"
-                    >
-                      Annulla Modifica
+                    <button type="submit" disabled={loading || imagePreviews.length === 0} className="ios-btn-primary w-full flex items-center justify-center gap-3 text-lg py-5 shadow-xl shadow-brand/40 uppercase tracking-widest font-black">
+                      {loading ? <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" /> : <Tag size={22} />}
+                      {t('put_in_sale')}
                     </button>
-                  )}
-                </form>
+
+                    {isEditingItem && (
+                      <button type="button" onClick={() => { setIsEditingItem(false); setView('dashboard'); }} className="w-full text-ios-gray font-bold text-sm py-2">Annulla</button>
+                    )}
+                  </form>
+                </div>
               </div>
             </motion.div>
           )}
@@ -1885,104 +1871,102 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="max-w-3xl mx-auto"
+              className="max-w-3xl mx-auto w-full relative"
             >
-              <div className="ios-card p-5 sm:p-10 space-y-6 sm:space-y-8">
-                <div className="page-hero">
-                  <div className="page-hero-icon"><Search size={24} /></div>
-                  <h2>{t('buy_title')}</h2>
-                  <p>{t('buy_desc')}</p>
+              <div className="ios-card space-y-0 overflow-hidden shadow-2xl relative">
+                <div className="relative bg-gradient-to-br from-brand-start to-brand-end p-10 sm:p-20 flex flex-col items-center text-center space-y-4 overflow-hidden">
+                  {/* Decorative animated glow */}
+                  <motion.div 
+                    animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+                    transition={{ duration: 4, repeat: Infinity }}
+                    className="absolute -top-1/2 -right-1/2 w-full h-full bg-white/20 blur-[100px] rounded-full pointer-events-none"
+                  />
+                  <motion.div 
+                    animate={{ scale: [1.2, 1, 1.2], opacity: [0.2, 0.4, 0.2] }}
+                    transition={{ duration: 6, repeat: Infinity, delay: 1 }}
+                    className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-brand-start blur-[100px] rounded-full pointer-events-none opacity-50"
+                  />
+                  
+                  <h2 className="text-4xl sm:text-6xl font-black tracking-tight text-white drop-shadow-2xl z-10">{t('buy_title')}</h2>
+                  <p className="text-white/80 font-bold max-w-sm text-lg sm:text-xl z-10 leading-relaxed italic">{t('buy_desc')}</p>
                 </div>
-
-                <form onSubmit={handleBuy} className="space-y-5 sm:space-y-6">
-                  <div className="space-y-3 sm:space-y-4">
-                    <label className="rm-label">{t('what_looking_for')}</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder={t('placeholder_buy_title')}
-                      className="rm-input-lg"
-                      value={newRequest.query}
-                      onChange={e => setNewRequest({...newRequest, query: e.target.value})}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
-                    <div className="space-y-3 sm:space-y-4">
-                      <label className="rm-label">{t('max_price_label')}</label>
-                      <input
-                        type="number"
-                        placeholder={t('no_limit')}
-                        className="rm-input-lg"
-                        value={newRequest.max_price}
-                        onChange={e => setNewRequest({...newRequest, max_price: e.target.value})}
-                      />
+                
+                <div className="p-5 sm:p-10 space-y-8">
+                  <form onSubmit={handleBuy} className="space-y-6 sm:space-y-8">
+                    <div className="space-y-4">
+                      <label className="rm-label">{t('what_looking_for')}</label>
+                      <input required type="text" placeholder={t('placeholder_buy_title')} className="rm-input-lg" value={newRequest.query} onChange={e => setNewRequest({...newRequest, query: e.target.value})} />
                     </div>
 
-                    <div className="space-y-3 sm:space-y-4">
-                      <label className="rm-label">{t('where')}</label>
-                      <div className="relative">
-                        <select
-                          required
-                          className="rm-input-lg appearance-none cursor-pointer w-full"
-                          value={isCustomCityBuy ? 'custom' : newRequest.location}
-                          onChange={e => {
-                            if (e.target.value === 'custom') {
-                              setIsCustomCityBuy(true);
-                              setNewRequest({...newRequest, location: ''});
-                            } else {
-                              setIsCustomCityBuy(false);
-                              setNewRequest({...newRequest, location: e.target.value});
-                            }
-                          }}
-                        >
-                          <option value="" disabled>{t('city_select_placeholder')}</option>
-                          <option value="Tutte le città">{t('all_cities')}</option>
-                          <option value="Roma">Roma</option>
-                          <option value="Milano">Milano</option>
-                          <option value="Napoli">Napoli</option>
-                          <option value="Torino">Torino</option>
-                          <option value="Palermo">Palermo</option>
-                          <option value="Genova">Genova</option>
-                          <option value="Bologna">Bologna</option>
-                          <option value="Firenze">Firenze</option>
-                          <option value="Bari">Bari</option>
-                          <option value="Catania">Catania</option>
-                          <option value="Venezia">Venezia</option>
-                          <option value="Verona">Verona</option>
-                          <option value="custom">Altro (Inserisci città)</option>
-                        </select>
-                        {isCustomCityBuy && (
-                          <motion.div 
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="mt-3"
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        <label className="rm-label">{t('max_price_label')}</label>
+                        <input type="number" placeholder={t('no_limit')} className="rm-input-lg" value={newRequest.max_price} onChange={e => setNewRequest({...newRequest, max_price: e.target.value})} />
+                      </div>
+                      <div className="space-y-4">
+                        <label className="rm-label">{t('where')}</label>
+                        <div className="relative">
+                          <select
+                            required
+                            className="rm-input-lg appearance-none cursor-pointer w-full"
+                            value={isCustomCityBuy ? 'custom' : newRequest.location}
+                            onChange={e => {
+                              if (e.target.value === 'custom') {
+                                setIsCustomCityBuy(true);
+                                setNewRequest({...newRequest, location: ''});
+                              } else {
+                                setIsCustomCityBuy(false);
+                                setNewRequest({...newRequest, location: e.target.value});
+                              }
+                            }}
                           >
-                            <input
-                              type="text"
-                              required
-                              placeholder="Inserisci il nome della città"
-                              className="rm-input-lg"
-                              value={newRequest.location}
-                              onChange={e => setNewRequest({...newRequest, location: e.target.value})}
-                            />
-                          </motion.div>
-                        )}
-                        <div className="absolute inset-y-0 right-6 sm:right-10 flex items-center pointer-events-none text-ios-gray">
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                            <option value="" disabled>{t('city_select_placeholder')}</option>
+                            <option value="Tutte le città">{t('all_cities')}</option>
+                            <option value="Roma">Roma</option>
+                            <option value="Milano">Milano</option>
+                            <option value="Napoli">Napoli</option>
+                            <option value="Torino">Torino</option>
+                            <option value="Palermo">Palermo</option>
+                            <option value="Genova">Genova</option>
+                            <option value="Bologna">Bologna</option>
+                            <option value="Firenze">Firenze</option>
+                            <option value="Bari">Bari</option>
+                            <option value="Catania">Catania</option>
+                            <option value="Venezia">Venezia</option>
+                            <option value="Verona">Verona</option>
+                            <option value="custom">Altro (Inserisci città)</option>
+                          </select>
+                          {isCustomCityBuy && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: -10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="mt-3"
+                            >
+                              <input
+                                type="text"
+                                required
+                                placeholder="Inserisci il nome della città"
+                                className="rm-input-lg"
+                                value={newRequest.location}
+                                onChange={e => setNewRequest({...newRequest, location: e.target.value})}
+                              />
+                            </motion.div>
+                          )}
+                          <div className="absolute inset-y-0 right-6 sm:right-10 flex items-center pointer-events-none text-ios-gray">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <button
-                    disabled={loading}
-                    type="submit"
-                    className="ios-btn-primary w-full text-lg"
-                  >
-                    {loading ? t('saving') : (newRequest.query !== '' && topSearches && userRequests.find(r => r.query === newRequest.query) ? t('update_match_search') : t('create_match_search'))}
-                  </button>
-                </form>
+                    <button type="submit" disabled={loading} className="ios-btn-primary w-full flex items-center justify-center gap-3 text-lg py-5 shadow-xl shadow-brand/40 uppercase tracking-widest font-black">
+                      {loading ? <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" /> : <Search size={22} />}
+                      {t('create_match_search')}
+                    </button>
+                    
+                    <button type="button" onClick={() => setView('home')} className="w-full text-ios-gray font-bold text-sm py-2">Annulla</button>
+                  </form>
+                </div>
               </div>
             </motion.div>
           )}
@@ -2087,8 +2071,8 @@ export default function App() {
                   </button>
                 </form>
               </div>
-            </motion.div>
-          )}
+          </motion.div>
+        )}
 
           {view === 'dashboard' && (
             <motion.div
@@ -2098,26 +2082,50 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-10"
             >
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <div className="space-y-2">
-                  <h2 className="text-3xl sm:text-5xl font-display font-black tracking-tight">{t('dashboard_title')}</h2>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                    <span className="text-ios-gray text-base sm:text-lg font-black">{currentUser?.nome}</span>
-                  </div>
-                </div>
-                {!notificationsEnabled && (
-                  <button
-                    onClick={handleEnableNotifications}
-                    className="px-6 py-3.5 bg-ios-blue/10 text-ios-blue font-black rounded-xl text-xs flex items-center gap-2 hover:bg-ios-blue/20 transition-all shadow-sm"
-                  >
-                    <Bell size={16} />
-                    {t('enable_notif')}
-                  </button>
-                )}
-              </div>
-
-              {/* Tab Switcher */}
+              <div className="ios-card space-y-0 overflow-hidden shadow-2xl relative border border-white/10 glass-card">
+                 <div className="relative bg-gradient-to-br from-brand-start to-brand-end p-12 sm:p-20 flex flex-col items-center text-center space-y-4 overflow-hidden">
+                   {/* Mesmerizing Background Elements */}
+                   <motion.div 
+                     animate={{ 
+                       x: [0, 80, 0], 
+                       y: [0, -40, 0],
+                       scale: [1, 1.4, 1] 
+                     }}
+                     transition={{ duration: 15, repeat: Infinity }}
+                     className="absolute -top-[50%] -right-[20%] w-[500px] h-[500px] bg-white/20 blur-[100px] rounded-full pointer-events-none"
+                   />
+                   <motion.div 
+                     animate={{ 
+                       x: [0, -70, 0], 
+                       y: [0, 50, 0],
+                       scale: [1.4, 1, 1.4] 
+                     }}
+                     transition={{ duration: 18, repeat: Infinity, delay: 2 }}
+                     className="absolute -bottom-[40%] -left-[20%] w-[450px] h-[450px] bg-brand-start blur-[100px] rounded-full opacity-60 pointer-events-none"
+                   />
+                   
+                   <motion.div
+                     initial={{ opacity: 0, scale: 0.9 }}
+                     animate={{ opacity: 1, scale: 1 }}
+                     className="z-10 flex flex-col items-center"
+                   >
+                     <h2 className="text-4xl sm:text-7xl font-black tracking-tighter text-white drop-shadow-2xl translate-y-2 uppercase">{t('dashboard_title')}</h2>
+                     <div className="flex items-center gap-2 mt-6 bg-black/20 backdrop-blur-xl px-6 py-2.5 rounded-2xl border border-white/10 shadow-ios">
+                       <div className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse shadow-[0_0_12px_rgba(74,222,128,0.8)]" />
+                       <span className="text-white text-base sm:text-xl font-black tracking-widest uppercase">{currentUser?.nome}</span>
+                     </div>
+                     {!notificationsEnabled && (
+                       <button
+                         onClick={handleEnableNotifications}
+                         className="mt-6 px-5 py-2.5 bg-white/10 text-white font-black rounded-xl text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-white/20 hover:scale-105 transition-all shadow-lg border border-white/5"
+                       >
+                         <Bell size={14} />
+                         {t('enable_notif')}
+                       </button>
+                     )}
+                   </motion.div>
+                 </div>
+               </div>
               <div className="flex items-center gap-2 overflow-x-auto pb-6 scrollbar-hide -mx-4 px-4 sm:sticky sm:top-[72px] z-20 transition-all">
                 {[
                   { id: 'overview', label: t('tab_overview'), icon: LayoutGrid },
@@ -2129,7 +2137,7 @@ export default function App() {
                   <button
                     key={tab.id}
                     onClick={() => setDashboardTab(tab.id as any)}
-                    className={`flex items-center gap-3 px-8 py-4 rounded-2xl whitespace-nowrap transition-all font-black text-sm ${dashboardTab === tab.id ? 'bg-orange-500 text-white scale-105' : 'bg-ios-secondary text-ios-gray hover:text-ios-label hover:shadow-lg hover:-translate-y-0.5'}`}
+                    className={`flex items-center gap-3 px-8 py-4 rounded-2xl whitespace-nowrap transition-all font-black text-sm ${dashboardTab === tab.id ? 'bg-gradient-to-br from-brand-start to-brand-end text-white scale-105 shadow-brand' : 'bg-ios-secondary text-ios-gray hover:text-ios-label hover:shadow-lg hover:-translate-y-0.5'}`}
                   >
                     <tab.icon size={18} />
                     {tab.label}

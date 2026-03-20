@@ -43,7 +43,7 @@ export const translations = {
     support: "Assistenza",
     legal: "Legale",
     rights_reserved: "TUTTI I DIRITTI RISERVATI",
-    search_cta: "Trova Match",
+    search_cta: "Match Now",
     search_ai_help: "La nostra AI cerca match in tutte le categorie.",
     see_all: "Vedi tutto",
     recent_items: "Gli ultimi oggetti nella community",

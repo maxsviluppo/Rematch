@@ -27,10 +27,11 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false
   },
-  max: 5,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-});
+   max: 20,
+   idleTimeoutMillis: 30000,
+   connectionTimeoutMillis: 10000,
+   maxUses: 7500, // Re-create connection periodically
+ });
 
 // Added error handler to prevent crash on idle client errors
 pool.on('error', (err) => {
@@ -166,36 +167,40 @@ async function startServer() {
         return res.json(cachedItems);
       }
 
-      let queryByFilters = `
-        SELECT i.*, 
-        (SELECT COUNT(*) FROM favorites f WHERE f.item_id = i.id) as LikeCount
-        FROM items i 
-        WHERE (i.status = 'available' OR i.status IS NULL)
-      `;
-      const filterParams: any[] = [];
-      
-      if (qStr) {
-        queryByFilters += " AND (i.title ILIKE $1 OR i.description ILIKE $2)";
-        filterParams.push(`%${qStr}%`, `%${qStr}%`);
-      }
-
-      if (catStr) {
-        const paramIdx = filterParams.length + 1;
-        queryByFilters += ` AND i.category = $${paramIdx}`;
-        filterParams.push(catStr);
-      }
-
-      queryByFilters += " ORDER BY i.created_at DESC LIMIT 25";
-      
-      console.log(`[GET /api/items] FETCHING FROM DB: q="${q}", cat="${category}"`);
-      const result = await pool.query(queryByFilters, filterParams);
-      
-      if (isGeneric) {
-        cachedItems = result.rows;
-        lastFetchTime = Date.now();
-      }
-
-      res.json(result.rows);
+       let queryByFilters = `
+         SELECT 
+           i.id, i.seller_id, i.title, i.description, 
+           i.price::float as price, i.location, i.category, i.image_url, i.images, 
+           i.status, i.created_at, i.updated_at,
+           COUNT(f.id)::int as LikeCount
+         FROM items i 
+         LEFT JOIN favorites f ON f.item_id = i.id
+         WHERE (i.status = 'available' OR i.status IS NULL)
+       `;
+       const filterParams: any[] = [];
+       
+       if (qStr) {
+         queryByFilters += " AND (i.title ILIKE $1 OR i.description ILIKE $2)";
+         filterParams.push(`%${qStr}%`, `%${qStr}%`);
+       }
+ 
+       if (catStr) {
+         const paramIdx = filterParams.length + 1;
+         queryByFilters += ` AND i.category = $${paramIdx}`;
+         filterParams.push(catStr);
+       }
+ 
+       queryByFilters += " GROUP BY i.id ORDER BY i.created_at DESC LIMIT 25";
+       
+       console.log(`[GET /api/items] FETCHING FROM DB: q="${q}", cat="${category}"`);
+       const result = await pool.query(queryByFilters, filterParams);
+       
+       if (isGeneric) {
+         cachedItems = result.rows;
+         lastFetchTime = Date.now();
+       }
+ 
+       res.json(result.rows);
     } catch (error: any) {
       console.error("FATAL ERROR in /api/items:", error);
       res.status(500).json({ error: "Server Error", details: error.message });
