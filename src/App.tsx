@@ -24,6 +24,8 @@ import {
   Home,
   LayoutDashboard,
   PlusCircle,
+  LayoutGrid,
+  Box,
   Camera,
   ImagePlus,
   RefreshCw,
@@ -339,6 +341,7 @@ const TransactionCard = ({ tr, isSeller, t, currentUser, loading, handleShip, ha
 
 
 export default function App() {
+  const [dashboardTab, setDashboardTab] = useState<'overview' | 'purchases' | 'sales' | 'items' | 'saved'>('overview');
   const [session, setSession] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<{id: string, nome: string} | null>(null);
   const [currentLang, setCurrentLang] = useState<Language>('it');
@@ -464,8 +467,12 @@ export default function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      const now = new Date().toLocaleTimeString();
+      console.log(`[${now}] Auth event: ${event}`, session?.user?.id);
+      
       setSession(session);
+      
       if (session?.user) {
         fetchUserProfile(session.user.id);
         // Automatically close auth panel and go to home if logged in
@@ -473,12 +480,15 @@ export default function App() {
           setView('home');
           window.scrollTo(0, 0);
         }
-      } else {
+      } else if (event === 'SIGNED_OUT') {
+        // Clear all user-specific data only on explicit sign out
+        console.log(`[${now}] Clearing user data due to sign out`);
         setCurrentUser(null);
         setFavorites([]);
         setProposals([]);
         setTransactions([]);
         setSellerItems([]);
+        setUserRequests([]);
       }
     });
 
@@ -548,7 +558,7 @@ export default function App() {
         });
         fetchData();
       });
-      fetchUserRelatedData();
+      fetchUserRelatedData(currentUser.id);
     }
     
     return () => {
@@ -615,8 +625,8 @@ export default function App() {
         const { data, error: itemsError } = await supabase
           .from('items')
           .select('*')
-          .eq('status', 'available')
-          .limit(25);
+          .or('status.eq.available,status.is.null')
+          .limit(50);
         
         if (itemsError) throw itemsError;
         allItems = data || [];
@@ -654,9 +664,9 @@ export default function App() {
     }
   }, [selectedItem?.id]);
 
-  const fetchUserRelatedData = async () => {
-    if (!session?.user?.id) return;
-    const userId = session.user.id;
+  const fetchUserRelatedData = async (forcedId?: string) => {
+    const userId = forcedId || session?.user?.id;
+    if (!userId) return;
     const now = new Date().toLocaleTimeString();
     
     // Separate try-catches so one failure doesn't block the whole dashboard
@@ -699,7 +709,11 @@ export default function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      await Promise.all([fetchItems(), fetchUserRelatedData()]);
+      await Promise.all([
+        fetchItems(),
+        fetchUserRelatedData(),
+        fetchTopSearches()
+      ]);
     } catch (err) {
       console.error("Error fetching data:", err);
     } finally {
@@ -1287,7 +1301,7 @@ export default function App() {
         initial={{ y: 0 }}
         animate={{ y: showHeader ? 0 : -100 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
-        className="sticky top-0 z-50 nav-gradient px-4 sm:px-6 py-3 sm:py-4"
+        className="sticky top-0 z-50 bg-black/95 backdrop-blur-xl px-4 sm:px-6 py-3 sm:py-4 border-b border-white/5"
       >
         <div className="max-w-5xl mx-auto flex justify-between items-center">
           <div className="flex items-center cursor-pointer h-10" onClick={() => goTo('home')}>
@@ -1447,88 +1461,130 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.4 }}
-              className="space-y-12"
+              className="space-y-12 -mx-4 sm:-mx-6 -mt-20 sm:-mt-32"
             >
               {/* Hero */}
-              <section className="relative overflow-hidden rounded-3xl bg-[#1c1c1e] text-white px-6 py-10 sm:px-14 sm:py-16">
+              <section className="relative overflow-hidden sm:rounded-b-[2.5rem] bg-black text-white min-h-[90vh] sm:min-h-[80vh] flex flex-col items-center justify-start text-center px-6 pt-16 pb-20 max-w-[1900px] mx-auto shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)]">
+                {/* Visual elements */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                  <div className="absolute -top-1/4 -right-1/4 w-3/4 h-3/4 bg-brand-start/20 rounded-full blur-[100px]" />
-                  <div className="absolute -bottom-1/4 -left-1/4 w-2/4 h-2/4 bg-brand-end/15 rounded-full blur-[80px]" />
+                  <motion.div 
+                    animate={{ 
+                      scale: [1, 1.2, 1],
+                      opacity: [0.3, 0.6, 0.3],
+                    }}
+                    transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute top-[-10%] right-[-10%] w-[1000px] h-[1000px] bg-orange-500/20 rounded-full blur-[180px]" 
+                  />
+                  <motion.div 
+                    animate={{ 
+                      scale: [1.2, 1, 1.2],
+                      opacity: [0.2, 0.5, 0.2],
+                    }}
+                    transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+                    className="absolute bottom-[-10%] left-[-10%] w-[800px] h-[800px] bg-orange-600/15 rounded-full blur-[180px]" 
+                  />
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,rgba(255,165,0,0.08)_0%,transparent_70%)]" />
                 </div>
-                <div className="relative z-10 max-w-xl space-y-6 sm:space-y-8">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-xl rounded-full border border-white/10">
-                    <TrendingUp size={14} className="text-brand-start" />
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t('hero_badge')}</span>
+                
+                <div className="relative z-10 max-w-4xl w-full space-y-12 mt-12 sm:mt-16">
+                  <div className="space-y-8">
+                    <div className="space-y-6">
+                      <motion.div 
+                        animate={{ y: [0, -15, 0] }}
+                        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                        className="flex justify-center flex-col items-center gap-4"
+                      >
+                        <img 
+                          src="/logo.png" 
+                          alt="ReMatch Logo" 
+                          className="h-32 sm:h-44 md:h-64 w-auto object-contain hover:scale-105 transition-transform duration-700 filter drop-shadow-[0_0_50px_rgba(255,165,0,0.4)]"
+                        />
+                      </motion.div>
+                      <div className="flex flex-col gap-2">
+                        <p className="text-2xl sm:text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-orange-400 to-orange-600">
+                          {t('home_subtitle' as any) || 'Diamo nuova vita alle tue cose'}
+                        </p>
+                        <p className="text-lg sm:text-xl text-white/50 font-medium max-w-2xl mx-auto leading-relaxed">
+                          {t('home_payoff' as any) || 'Semplice, veloce, sicuro. Trasforma in valore ciò che non usi più.'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <h1 className="text-3xl sm:text-5xl md:text-6xl leading-tight font-display font-black tracking-tighter">
-                    {t('hero_title1')}<br />
-                    <span className="text-transparent bg-clip-text" style={{backgroundImage:'linear-gradient(135deg,#FFB800,#FF7A00)'}}>{t('hero_title2')}</span>
-                  </h1>
-                  <p className="text-white/55 text-sm sm:text-lg leading-relaxed max-w-md font-medium">
-                    {t('hero_desc')}
-                  </p>
-                  <div className="flex flex-wrap gap-3 pt-2">
-                    <button onClick={() => requireAuth('sell')} className="ios-btn-primary group flex items-center gap-2">
+
+                  {/* Primary CTA Buttons */}
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+                    <button 
+                      onClick={() => requireAuth('sell')} 
+                      className="w-full sm:w-auto px-12 py-5 bg-gradient-to-br from-orange-400 via-orange-500 to-red-600 text-white rounded-2xl font-black text-lg hover:scale-105 transition-all active:scale-95 shadow-[0_20px_60px_-10px_rgba(255,100,0,0.5)] flex items-center justify-center gap-3"
+                    >
+                      <Tag size={22} />
                       {t('hero_start_selling')}
-                      <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                     </button>
-                    <button onClick={() => requireAuth('buy')} className="px-6 py-3.5 bg-white/10 border border-white/15 rounded-xl font-bold text-sm hover:bg-white/18 transition-all active:scale-95">
-                      {t('hero_search_items')}
+                    <button 
+                      onClick={() => requireAuth('buy')} 
+                      className="w-full sm:w-auto px-12 py-5 bg-white/10 backdrop-blur-3xl border border-white/20 text-white rounded-2xl font-black text-lg hover:bg-white/20 hover:border-orange-500/50 transition-all active:scale-95 flex items-center justify-center gap-3"
+                    >
+                      <Search size={22} />
+                      {t('search_cta')}
                     </button>
+                  </div>
+
+                  {/* Hero AI Search Box */}
+                  <div id="hero-search-box" className="ios-card bg-white/5 backdrop-blur-2xl border-white/10 p-2 sm:p-3 rounded-[2rem] max-w-2xl mx-auto mt-8 group focus-within:border-orange-500/50 transition-all duration-500">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex-1 relative">
+                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-white/50 group-focus-within:text-orange-500 transition-colors" size={20} />
+                        <input
+                          type="text"
+                          placeholder="Cosa cerchi oggi?"
+                          className="w-full pl-14 pr-12 py-5 bg-transparent rounded-2xl focus:outline-none text-lg font-bold placeholder:text-white/50 text-white"
+                          value={searchQuery}
+                          onChange={e => setSearchQuery(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && (setDebouncedSearchQuery(searchQuery), fetchData())}
+                        />
+                        {searchQuery && (
+                          <button 
+                            onClick={() => saveCurrentSearch()}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-orange-500 hover:bg-orange-500/10 rounded-lg transition-all"
+                          >
+                            <Heart size={20} />
+                          </button>
+                        )}
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setDebouncedSearchQuery(searchQuery);
+                          fetchData();
+                          // Scroll to results
+                          setTimeout(() => {
+                            const itemsSection = document.getElementById('marketplace-items');
+                            itemsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }, 100);
+                        }} 
+                        className="px-10 py-5 bg-gradient-to-r from-orange-400 via-orange-500 to-red-600 text-white font-black rounded-[1.5rem] hover:scale-105 transition-all shadow-xl shadow-orange-600/40 ring-2 ring-orange-500/20 active:scale-95"
+                      >
+                        Match Now
+                      </button>
+                    </div>
                   </div>
                 </div>
               </section>
 
-              {/* Search */}
-              <div className="ios-card p-5 sm:p-8">
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="flex-1 relative group">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-ios-gray/60 group-focus-within:text-brand-end transition-colors duration-200" size={18} />
-                    <input
-                      type="text"
-                      placeholder={t('search_placeholder')}
-                      className="w-full pl-11 pr-12 py-3.5 bg-ios-secondary rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-end/30 transition-all text-base font-semibold placeholder:text-ios-gray/50"
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && (setDebouncedSearchQuery(searchQuery), fetchData())}
-                    />
-                    {searchQuery && (
-                      <button 
-                        onClick={() => saveCurrentSearch()}
-                        title="Salva questa ricerca"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-brand-end hover:bg-brand-end/10 rounded-lg transition-all"
-                      >
-                        <Heart size={18} />
-                      </button>
-                    )}
+              {/* Vetrina in container */}
+              <div className="max-w-5xl mx-auto px-4 sm:px-6 space-y-12">
+                {/* Vetrina Anteprima */}
+                <section id="marketplace-items" className="space-y-5 sm:space-y-6 scroll-mt-24">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h2 className="rm-section-title">{t('vetrina')}</h2>
+                      <p className="text-ios-gray text-xs mt-0.5">{t('recent_items')}</p>
+                    </div>
+                    <button onClick={() => goTo('vetrina')} className="text-brand-end text-sm font-bold flex items-center gap-1 hover:gap-2 transition-all">
+                      {t('see_all')} <ChevronRight size={15} />
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => {
-                      setDebouncedSearchQuery(searchQuery);
-                      fetchData();
-                    }} 
-                    className="ios-btn-primary whitespace-nowrap"
-                  >
-                    {t('search_cta')}
-                  </button>
-                </div>
-                <p className="mt-3 text-ios-gray text-xs font-medium">{t('search_ai_help')}</p>
-              </div>
 
-
-              {/* Vetrina Anteprima */}
-              <section className="space-y-5 sm:space-y-6">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h2 className="rm-section-title">{t('vetrina')}</h2>
-                    <p className="text-ios-gray text-xs mt-0.5">{t('recent_items')}</p>
-                  </div>
-                  <button onClick={() => goTo('vetrina')} className="text-brand-end text-sm font-bold flex items-center gap-1 hover:gap-2 transition-all">
-                    {t('see_all')} <ChevronRight size={15} />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                   {items.slice(0, 12).map((item) => {
                     const isFav = favorites.some(f => f.id === item.id);
                     return (
@@ -1613,7 +1669,8 @@ export default function App() {
                   </button>
                 </div>
               </section>
-            </motion.div>
+            </div>
+          </motion.div>
           )}
 
           {view === 'sell' && (
@@ -2025,7 +2082,7 @@ export default function App() {
                       t('payment_confirm') + " (Demo)"
                     )}
                   </button>
-                  <button type="button" onClick={() => requireAuth('dashboard')} className="w-full py-3 text-ios-gray text-sm font-bold hover:text-ios-label transition-colors">
+                  <button type="button" onClick={() => setView('home')} className="w-full py-3 text-ios-gray text-sm font-bold hover:text-ios-label transition-colors">
                     {t('cancel')}
                   </button>
                 </form>
@@ -2039,394 +2096,373 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="space-y-12"
+              className="space-y-10"
             >
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 sm:gap-8">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div className="space-y-2">
                   <h2 className="text-3xl sm:text-5xl font-display font-black tracking-tight">{t('dashboard_title')}</h2>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                     <span className="text-ios-gray text-base sm:text-lg font-black">{currentUser?.nome}</span>
                   </div>
-                  <p className="text-ios-gray/60 text-sm font-medium">{t('dashboard_desc')}</p>
                 </div>
-                <div className="flex flex-wrap gap-3 sm:gap-4 w-full sm:w-auto">
-                  {!notificationsEnabled && (
-                    <button
-                      onClick={handleEnableNotifications}
-                      className="flex-1 sm:flex-none px-6 sm:px-8 py-3.5 sm:py-4 bg-ios-blue/10 text-ios-blue font-black rounded-xl sm:rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 sm:gap-3 hover:bg-ios-blue/20 transition-all active:scale-95 shadow-lg shadow-ios-blue/5"
-                    >
-                      <Bell size={16} />
-                      {t('enable_notif')}
-                    </button>
-                  )}
-                </div>
+                {!notificationsEnabled && (
+                  <button
+                    onClick={handleEnableNotifications}
+                    className="px-6 py-3.5 bg-ios-blue/10 text-ios-blue font-black rounded-xl text-xs flex items-center gap-2 hover:bg-ios-blue/20 transition-all shadow-sm"
+                  >
+                    <Bell size={16} />
+                    {t('enable_notif')}
+                  </button>
+                )}
               </div>
 
-              {/* 1. Stats Box (Brand Style) - Now First */}
-              <div className="stat-card-brand space-y-5">
-                <div className="flex items-center justify-between">
-                  <h3 className="rm-section-title !text-white">{t('my_stats')}</h3>
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-white/10 px-3 py-1 rounded-full">
-                    <TrendingUp size={12} />
-                    <span>{t('top_seller')}</span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
-                  <div className="space-y-1">
-                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('active_listings' as any)}</p>
-                    <p className="text-3xl sm:text-4xl font-black">{sellerItems.filter(i => i.status === 'available').length}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('sold_products' as any)}</p>
-                    <p className="text-3xl sm:text-4xl font-black">{transactions.filter(tr => tr.seller_id === (session?.user?.id || '')).length}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('purchased_products' as any)}</p>
-                    <p className="text-3xl sm:text-4xl font-black">{transactions.filter(tr => tr.buyer_id === (session?.user?.id || '')).length}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('active_searches')}</p>
-                    <p className="text-3xl sm:text-4xl font-black">{userRequests.length}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('matches_found')}</p>
-                    <p className="text-3xl sm:text-4xl font-black">{proposals.length}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{t('reliability')}</p>
-                    <p className="text-3xl sm:text-4xl font-black">9.8</p>
-                  </div>
-                </div>
+              {/* Tab Switcher */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-6 scrollbar-hide -mx-4 px-4 sm:sticky sm:top-[72px] z-20 transition-all">
+                {[
+                  { id: 'overview', label: t('tab_overview'), icon: LayoutGrid },
+                  { id: 'items', label: t('tab_items'), icon: Box },
+                  { id: 'purchases', label: t('tab_purchases'), icon: ShoppingBag },
+                  { id: 'sales', label: t('tab_sales'), icon: Tag },
+                  { id: 'saved', label: t('tab_saved'), icon: Heart }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setDashboardTab(tab.id as any)}
+                    className={`flex items-center gap-3 px-8 py-4 rounded-2xl whitespace-nowrap transition-all font-black text-sm ${dashboardTab === tab.id ? 'bg-orange-500 text-white scale-105' : 'bg-ios-secondary text-ios-gray hover:text-ios-label hover:shadow-lg hover:-translate-y-0.5'}`}
+                  >
+                    <tab.icon size={18} />
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-12">
-
-                  {/* 1. My Searches (As List) - Now Higher */}
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">{t('my_searches')}</h3>
-                      <span className="text-ios-gray text-xs font-medium">{userRequests.length} {t('active')}</span>
-                    </div>
-
-                    {userRequests.length === 0 ? (
-                      <div className="ios-card p-12 border-2 border-dashed border-ios-gray/10 flex flex-col items-center justify-center text-center space-y-3">
-                         <div className="w-10 h-10 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
-                          <Search size={20} />
+              <AnimatePresence mode="wait">
+                {dashboardTab === 'overview' && (
+                  <motion.div 
+                    key="overview"
+                    initial={{ opacity: 0, x: -10 }} 
+                    animate={{ opacity: 1, x: 0 }} 
+                    exit={{ opacity: 0, x: 10 }}
+                    className="space-y-10"
+                  >
+                    {/* Stats Box */}
+                    <div className="stat-card-brand space-y-5">
+                      <div className="flex items-center justify-between">
+                        <h3 className="rm-section-title !text-white">{t('my_stats')}</h3>
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-white/10 px-3 py-1 rounded-full">
+                          <TrendingUp size={12} />
+                          <span>{t('top_seller')}</span>
                         </div>
-                        <p className="text-ios-gray text-xs">{t('no_saved_searches')}</p>
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {userRequests.map((req) => (
-                          <div key={req.id} className="ios-card p-4 flex items-center justify-between hover:bg-black/[0.01] transition-colors">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-ios-blue/10 text-ios-blue rounded-full flex items-center justify-center shadow-sm">
-                                <Search size={18} />
-                              </div>
-                              <div>
-                                <p className="font-bold text-sm tracking-tight text-ios-label">"{req.query}"</p>
-                                <p className="text-[10px] text-ios-gray font-bold uppercase tracking-wider">
-                                  {req.location} • {req.max_price > 0 ? `${t('up_to')} €${req.max_price}` : t('any_price')}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => {
-                                  setNewRequest({ query: req.query, min_price: 0, max_price: req.max_price, location: req.location });
-                                  deleteRequest(req.id);
-                                  setView('buy');
-                                }}
-                                className="p-2 text-ios-gray hover:text-ios-blue transition-colors rounded-lg hover:bg-ios-blue/5"
-                              >
-                                <RefreshCw size={16} />
-                              </button>
-                              <button
-                                onClick={() => deleteRequest(req.id)}
-                                className="p-2 text-ios-gray hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-6">
+                        {[
+                          { label: t('active_listings' as any), val: sellerItems.filter(i => i.status === 'available').length },
+                          { label: t('sold_products' as any), val: transactions.filter(tr => tr.seller_id === (session?.user?.id || '')).length },
+                          { label: t('purchased_products' as any), val: transactions.filter(tr => tr.buyer_id === (session?.user?.id || '')).length },
+                          { label: t('active_searches'), val: userRequests.length },
+                          { label: t('matches_found'), val: proposals.length },
+                          { label: t('reliability'), val: '9.8' }
+                        ].map((stat, i) => (
+                          <div key={i} className="space-y-1">
+                            <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">{stat.label}</p>
+                            <p className="text-3xl font-black">{stat.val}</p>
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-
-                  {/* 1. Suggested Matches (High Importance) */}
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">{t('suggested_matches')}</h3>
-                      <span className="px-3 py-1 bg-ios-blue text-white text-[10px] font-bold rounded-full">
-                        {proposals.length} {t('new_notif')}
-                      </span>
                     </div>
 
-                    {proposals.length === 0 ? (
-                      <div className="ios-card p-12 border-2 border-dashed border-ios-gray/10 flex flex-col items-center justify-center text-center space-y-4">
-                        <div className="w-12 h-12 bg-ios-secondary rounded-full flex items-center justify-center text-ios-gray/30">
-                          <ShoppingBag size={24} />
+                    {/* My Searches */}
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h3 className="rm-section-title">{t('my_searches')}</h3>
+                        <span className="text-ios-gray text-xs font-medium">{userRequests.length} {t('active')}</span>
+                      </div>
+
+                      {userRequests.length === 0 ? (
+                        <div className="ios-card p-12 border-2 border-dashed border-ios-gray/10 flex flex-col items-center justify-center text-center space-y-3">
+                          <Search size={24} className="text-ios-gray/20" />
+                          <p className="text-ios-gray text-xs">{t('no_saved_searches')}</p>
                         </div>
-                        <p className="text-ios-gray text-sm">{t('no_matches')}</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {proposals.map((prop) => (
-                          <motion.div
-                            layout
-                            key={prop.proposal_id}
-                            className="ios-card p-6 flex flex-col sm:flex-row gap-6 group"
-                          >
-                            <div className="w-full sm:w-40 h-40 rounded-2xl overflow-hidden flex-shrink-0 relative">
-                              <img src={prop.image_url} alt={prop.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" referrerPolicy="no-referrer" />
-                              <div className="absolute top-3 left-3 px-2 py-1 bg-green-500 text-white text-[10px] font-bold rounded-full shadow-sm">
-                                98% Match
-                              </div>
-                              <div className="absolute bottom-3 right-3 px-3 py-1 bg-brand-end text-white text-xs font-black rounded-xl shadow-lg">
-                                €{prop.price}
-                              </div>
-                            </div>
-                            <div className="flex-1 flex flex-col justify-between py-1">
-                              <div className="space-y-3">
-                                <div className="flex justify-between items-start">
-                                  <h4 className="text-xl font-bold">{prop.title}</h4>
-                                </div>
-                                <p className="text-ios-gray text-sm line-clamp-2 leading-relaxed">{prop.description}</p>
-                                <div className="flex items-center gap-4 text-xs font-medium text-ios-gray">
-                                  <div className="flex items-center gap-1.5">
-                                    <MapPin size={14} />
-                                    <span>{prop.location}</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex gap-3 mt-6">
-                                <button
-                                  onClick={() => respondToProposal(prop, 'accepted')}
-                                  className="flex-1 ios-btn-primary py-3 text-sm shadow-none"
-                                >
-                                  {t('accept')}
-                                </button>
-                                <button
-                                  onClick={() => respondToProposal(prop, 'rejected')}
-                                  className="px-6 py-3 bg-ios-secondary text-ios-gray font-semibold rounded-2xl text-sm hover:bg-ios-gray/10 hover:text-ios-label active:scale-95 transition-all"
-                                >
-                                  {t('reject')}
-                                </button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 3. In Vendita (I miei prodotti caricati) */}
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">{t('in_sale')}</h3>
-                      <span className="text-ios-gray text-xs font-medium">{sellerItems.filter(i => i.status === 'available').length} attivi · {sellerItems.filter(i => i.status === 'sold').length} venduti</span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                      {sellerItems.length === 0 ? (
-                        <p className="col-span-full text-xs text-ios-gray py-8 text-center border-2 border-dashed rounded-3xl">{t('no_saved_items')}</p>
                       ) : (
-                        sellerItems.map((item) => (
-                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-2 group cursor-pointer hover:shadow-xl transition-all relative">
-                            <div className="aspect-square rounded-2xl overflow-hidden mb-2">
-                              <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                            </div>
-                            {item.status === 'sold' && (
-                              <div className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center">
-                                <span className="text-white text-[10px] font-black uppercase tracking-widest bg-black/60 px-2 py-1 rounded-full">Venduto</span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {userRequests.map((req) => (
+                            <div key={req.id} className="ios-card p-5 flex items-center justify-between group">
+                              <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-ios-blue/10 text-ios-blue rounded-2xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                                  <Search size={20} />
+                                </div>
+                                <div className="space-y-1">
+                                  <p className="font-bold text-base tracking-tight text-ios-label">"{req.query}"</p>
+                                  <p className="text-[10px] text-ios-gray font-black uppercase tracking-widest bg-ios-secondary px-2 py-0.5 rounded-full inline-block">
+                                    {req.location} • {req.max_price > 0 ? `${t('up_to')} €${req.max_price}` : t('any_price')}
+                                  </p>
+                                </div>
                               </div>
-                            )}
-                            <p className="text-[10px] font-bold truncate px-1">{item.title}</p>
-                            <p className="text-[10px] text-brand-end font-black px-1">€{item.price}</p>
-                          </div>
-                        ))
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => {
+                                    setNewRequest({ query: req.query, min_price: 0, max_price: req.max_price, location: req.location });
+                                    deleteRequest(req.id);
+                                    setView('buy');
+                                  }}
+                                  className="p-2 text-ios-gray hover:text-ios-blue transition-colors rounded-lg"
+                                >
+                                  <RefreshCw size={18} />
+                                </button>
+                                <button
+                                  onClick={() => deleteRequest(req.id)}
+                                  className="p-2 text-ios-gray hover:text-red-500 transition-colors rounded-lg"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
-                  </div>
 
-                  {/* 4. My Purchases — Active + Completed */}
-                  <div className="space-y-6">
-                    {/* Active Purchases */}
+                    {/* Suggested Matches */}
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h3 className="rm-section-title">{t('suggested_matches')}</h3>
+                        <span className="px-3 py-1 bg-brand-end text-white text-[10px] font-black rounded-full shadow-lg shadow-brand-end/20">
+                          {proposals.length} {t('new_notif')}
+                        </span>
+                      </div>
+
+                      {proposals.length === 0 ? (
+                        <div className="ios-card p-12 border-2 border-dashed text-center">
+                          <p className="text-ios-gray text-xs">{t('no_matches')}</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {proposals.map((prop) => (
+                            <motion.div layout key={prop.proposal_id} className="ios-card p-5 flex gap-5 group items-center">
+                              <div className="w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 relative">
+                                <img src={prop.image_url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                <div className="absolute inset-0 bg-black/5" />
+                              </div>
+                              <div className="flex-1 space-y-3">
+                                <div>
+                                  <h4 className="font-bold text-base truncate">{prop.title}</h4>
+                                  <p className="text-brand-end font-black">€{prop.price}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button onClick={() => respondToProposal(prop, 'accepted')} className="flex-1 py-1.5 bg-green-500 text-white text-[10px] font-black rounded-lg shadow-sm">Accetta</button>
+                                  <button onClick={() => respondToProposal(prop, 'rejected')} className="flex-1 py-1.5 bg-ios-secondary text-ios-gray text-[10px] font-black rounded-lg">Rifiuta</button>
+                                </div>
+                              </div>
+                            </motion.div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Final - Logout and Delete */}
+                    <div className="pt-10 border-t border-ios-gray/10 space-y-4">
+                      <button 
+                        onClick={() => setShowLogoutConfirm(true)}
+                        className="w-full py-4 bg-white text-ios-label font-bold rounded-2xl border border-ios-gray/10 hover:bg-ios-secondary transition-all flex items-center justify-center gap-2"
+                      >
+                        <LogOut size={18} />
+                        {t('logout_cta')}
+                      </button>
+                      <button 
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="w-full py-4 text-red-500 font-bold text-sm hover:underline"
+                      >
+                        {t('delete_account_cta')}
+                      </button>
+                    </div>
+
+                    {/* How it works */}
+                    <div className="ios-card p-8 bg-ios-secondary/50 border-none">
+                      <h3 className="rm-section-title mb-6">{t('how_it_works')}</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        {[
+                          { step: 1, icon: <LayoutGrid size={24} />, text: t('step1') },
+                          { step: 2, icon: <RefreshCw size={24} />, text: t('step2') },
+                          { step: 3, icon: <CheckCircle2 size={24} />, text: t('step3') }
+                        ].map((s) => (
+                          <div key={s.step} className="flex flex-col items-center text-center space-y-3">
+                            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-brand-end shadow-sm border border-black/[0.03]">
+                              {s.icon}
+                            </div>
+                            <p className="text-[11px] font-bold text-ios-gray uppercase tracking-widest">{s.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {dashboardTab === 'purchases' && (
+                  <motion.div 
+                    key="purchases"
+                    initial={{ opacity: 0, x: -10 }} 
+                    animate={{ opacity: 1, x: 0 }} 
+                    exit={{ opacity: 0, x: 10 }}
+                    className="space-y-10"
+                  >
                     <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">Acquisti in Corso</h3>
+                      <h3 className="rm-section-title">{t('tab_purchases')}</h3>
                       <span className="text-ios-gray text-xs font-medium">
-                        {transactions.filter(t => t.buyer_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || (t.status === 'delivered' && !t.review_rating))).length} attivi
+                        {transactions.filter(t => t.buyer_id === currentUser?.id).length} ordini totali
                       </span>
                     </div>
 
-                    {transactions.filter(t => t.buyer_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || (t.status === 'delivered' && !t.review_rating))).length === 0 ? (
-                      <div className="ios-card p-8 text-center bg-ios-secondary/10 border-2 border-dashed border-black/[0.03]">
-                        <p className="text-ios-gray text-xs">Nessun acquisto in corso.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-6">
-                        {transactions
-                          .filter(t => t.buyer_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || (t.status === 'delivered' && !t.review_rating)))
-                          .map(tr => (
-                          <TransactionCard 
-                            key={tr.id} 
-                            tr={tr} 
-                            isSeller={false} 
-                            t={t} 
-                            currentUser={currentUser}
-                            loading={loading}
-                            handleShip={handleShip}
-                            handleConfirmArrival={handleConfirmArrival}
-                            setReviewState={setReviewState}
-                            reviewState={reviewState}
-                            handleSubmitReview={handleSubmitReview}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Completed Purchases Grid */}
-                    {transactions.filter(t => t.buyer_id === currentUser?.id && (t.status === 'completed' || (t.status === 'delivered' && t.review_rating))).length > 0 && (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-black uppercase tracking-[0.2em] text-ios-gray">Acquistati</h4>
-                          <span className="text-[10px] text-ios-gray font-bold">
-                            {transactions.filter(t => t.buyer_id === currentUser?.id && (t.status === 'completed' || (t.status === 'delivered' && t.review_rating))).length} articoli
-                          </span>
+                    {/* Active */}
+                    <div className="space-y-6">
+                      <h4 className="text-xs font-black uppercase tracking-[0.2em] text-ios-gray">In Corso</h4>
+                      {transactions.filter(t => t.buyer_id === currentUser?.id && !['completed', 'cancelled'].includes(t.status) && !(t.status === 'delivered' && t.review_rating)).length === 0 ? (
+                        <div className="ios-card p-12 border-2 border-dashed text-center">
+                          <p className="text-ios-gray text-xs">Nessun acquisto in corso.</p>
                         </div>
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                      ) : (
+                        <div className="grid grid-cols-1 gap-6">
+                          {transactions
+                            .filter(t => t.buyer_id === currentUser?.id && !['completed', 'cancelled'].includes(t.status) && !(t.status === 'delivered' && t.review_rating))
+                            .map(tr => (
+                            <TransactionCard key={tr.id} tr={tr} isSeller={false} t={t} currentUser={currentUser} loading={loading} handleShip={handleShip} handleConfirmArrival={handleConfirmArrival} setReviewState={setReviewState} reviewState={reviewState} handleSubmitReview={handleSubmitReview} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Completed */}
+                    {transactions.filter(t => t.buyer_id === currentUser?.id && (t.status === 'completed' || (t.status === 'delivered' && t.review_rating))).length > 0 && (
+                      <div className="space-y-6">
+                        <h4 className="text-xs font-black uppercase tracking-[0.2em] text-ios-gray">Completati</h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
                           {transactions
                             .filter(t => t.buyer_id === currentUser?.id && (t.status === 'completed' || (t.status === 'delivered' && t.review_rating)))
-                            .map(tr => (
-                              <CompletedPurchaseCard key={tr.id} tr={tr} t={t} />
-                            ))}
+                            .map(tr => <CompletedPurchaseCard key={tr.id} tr={tr} t={t} />)}
                         </div>
                       </div>
                     )}
-                  </div>
+                  </motion.div>
+                )}
 
-                  {/* 5. My Sales — Active + Completed */}
-                  <div className="space-y-6">
-                    {/* Active Sales */}
+                {dashboardTab === 'sales' && (
+                  <motion.div 
+                    key="sales"
+                    initial={{ opacity: 0, x: -10 }} 
+                    animate={{ opacity: 1, x: 0 }} 
+                    exit={{ opacity: 0, x: 10 }}
+                    className="space-y-10"
+                  >
                     <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">Vendite in Corso</h3>
+                      <h3 className="rm-section-title">{t('tab_sales')}</h3>
                       <span className="text-ios-gray text-xs font-medium">
-                        {transactions.filter(t => t.seller_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || t.status === 'delivered')).length} attive
+                        {transactions.filter(t => t.seller_id === currentUser?.id).length} vendite totali
                       </span>
                     </div>
 
-                    {transactions.filter(t => t.seller_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || t.status === 'delivered')).length === 0 ? (
-                      <div className="ios-card p-8 text-center bg-ios-secondary/10 border-2 border-dashed border-black/[0.03]">
-                        <p className="text-ios-gray text-xs">Nessuna vendita in corso.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-6">
-                        {transactions
-                          .filter(t => t.seller_id === currentUser?.id && (t.status === 'paid' || t.status === 'shipped' || t.status === 'delivered'))
-                          .map(tr => (
-                          <TransactionCard 
-                            key={tr.id} 
-                            tr={tr} 
-                            isSeller={true} 
-                            t={t} 
-                            currentUser={currentUser}
-                            loading={loading}
-                            handleShip={handleShip}
-                            handleConfirmArrival={handleConfirmArrival}
-                            setReviewState={setReviewState}
-                            reviewState={reviewState}
-                            handleSubmitReview={handleSubmitReview}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Completed Sales Grid */}
-                    {transactions.filter(t => t.seller_id === currentUser?.id && t.status === 'completed').length > 0 && (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-black uppercase tracking-[0.2em] text-ios-gray">Venduti</h4>
-                          <span className="text-[10px] text-ios-gray font-bold">
-                            {transactions.filter(t => t.seller_id === currentUser?.id && t.status === 'completed').length} articoli
-                          </span>
+                    <div className="space-y-6">
+                      <h4 className="text-xs font-black uppercase tracking-[0.2em] text-ios-gray">Ordini Ricevuti</h4>
+                      {transactions.filter(t => t.seller_id === currentUser?.id && !['completed', 'cancelled'].includes(t.status)).length === 0 ? (
+                        <div className="ios-card p-12 border-2 border-dashed text-center">
+                          <p className="text-ios-gray text-xs">Nessuna vendita attiva.</p>
                         </div>
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                      ) : (
+                        <div className="grid grid-cols-1 gap-6">
+                          {transactions
+                            .filter(t => t.seller_id === currentUser?.id && !['completed', 'cancelled'].includes(t.status))
+                            .map(tr => (
+                            <TransactionCard key={tr.id} tr={tr} isSeller={true} t={t} currentUser={currentUser} loading={loading} handleShip={handleShip} handleConfirmArrival={handleConfirmArrival} setReviewState={setReviewState} reviewState={reviewState} handleSubmitReview={handleSubmitReview} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {transactions.filter(t => t.seller_id === currentUser?.id && t.status === 'completed').length > 0 && (
+                      <div className="space-y-6">
+                        <h4 className="text-xs font-black uppercase tracking-[0.2em] text-ios-gray">Archivio Vendite</h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
                           {transactions
                             .filter(t => t.seller_id === currentUser?.id && t.status === 'completed')
-                            .map(tr => (
-                              <CompletedSaleCard key={tr.id} tr={tr} />
-                            ))}
+                            .map(tr => <CompletedSaleCard key={tr.id} tr={tr} t={t} />)}
                         </div>
                       </div>
                     )}
-                  </div>
+                  </motion.div>
+                )}
 
-
-                  {/* 6. Saved Items */}
-                  <div className="space-y-6">
+                {dashboardTab === 'items' && (
+                  <motion.div 
+                    key="items"
+                    initial={{ opacity: 0, x: -10 }} 
+                    animate={{ opacity: 1, x: 0 }} 
+                    exit={{ opacity: 0, x: 10 }}
+                    className="space-y-8"
+                  >
                     <div className="flex items-center justify-between">
-                      <h3 className="rm-section-title">{t('saved_items')}</h3>
-                      <span className="text-ios-gray text-xs font-medium">{favorites.length} salvati</span>
+                      <h3 className="rm-section-title">{t('tab_items')}</h3>
+                      <button onClick={() => requireAuth('sell')} className="text-brand-end text-sm font-bold flex items-center gap-1 hover:gap-2 transition-all">
+                        {t('sell_title')} <ArrowRight size={14} />
+                      </button>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                      {favorites.length === 0 ? (
-                        <p className="col-span-full text-xs text-ios-gray py-8 text-center border-2 border-dashed rounded-3xl">{t('no_saved_items')}</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
+                      {sellerItems.length === 0 ? (
+                        <div className="col-span-full ios-card p-20 text-center border-2 border-dashed flex flex-col items-center gap-4">
+                          <Box size={48} className="text-ios-gray/20" />
+                          <p className="text-ios-gray font-bold">{t('no_active_listings' as any) || 'Nessun annuncio'}</p>
+                          <button onClick={() => setView('sell')} className="ios-btn-primary px-8">Inizia ora</button>
+                        </div>
                       ) : (
-                        favorites.map((item) => (
-                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-2 group cursor-pointer relative hover:shadow-xl transition-all">
-                            <div className="aspect-square rounded-2xl overflow-hidden mb-2">
-                              <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                        sellerItems.map((item) => (
+                          <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-3 group cursor-pointer hover:shadow-2xl transition-all relative overflow-hidden bg-white">
+                            <div className="aspect-square rounded-xl overflow-hidden mb-3">
+                              <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                             </div>
-                            <button onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }} className="absolute top-3 right-3 p-2 bg-red-500 text-white rounded-full shadow-lg hover:scale-110 transition-all"><Heart size={14} fill="currentColor" /></button>
-                            <p className="text-[10px] font-bold truncate px-1">{item.title}</p>
+                            {item.status === 'sold' && (
+                              <div className="absolute top-0 right-0 p-2">
+                                <span className="bg-black/60 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-full backdrop-blur-sm">Sold</span>
+                              </div>
+                            )}
+                            <h4 className="text-xs font-bold truncate text-ios-label">{item.title}</h4>
+                            <p className="text-sm font-black text-brand-end mt-1">€{item.price}</p>
                           </div>
                         ))
                       )}
                     </div>
-                  </div>
+                  </motion.div>
+                )}
 
-                  {/* 7. Final - Logout and Delete */}
-                  <div className="pt-12 flex flex-col sm:flex-row gap-4">
-                    <button
-                      onClick={() => setShowLogoutConfirm(true)}
-                      className="flex-1 py-5 rounded-3xl bg-gradient-to-r from-ios-secondary to-ios-secondary/50 text-ios-gray font-black uppercase tracking-widest text-sm hover:from-ios-secondary/80 hover:to-ios-secondary transition-all active:scale-[0.98] border border-black/5 flex items-center justify-center gap-3 shadow-sm"
-                    >
-                      <LogOut size={20} />
-                      {t('logout_cta')}
-                    </button>
-                    <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="flex-1 py-5 rounded-3xl bg-gradient-to-r from-red-500 to-red-600 text-white font-black uppercase tracking-widest text-sm hover:from-red-600 hover:to-red-700 shadow-xl shadow-red-500/20 active:scale-[0.98] flex items-center justify-center gap-3"
-                    >
-                      <Trash2 size={20} />
-                      {t('delete_account_cta')}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-
-
-                  <div className="ios-card p-5 sm:p-6 space-y-5">
-                    <h3 className="rm-section-title">{t('how_it_works')}</h3>
+                {dashboardTab === 'saved' && (
+                  <motion.div 
+                    key="saved"
+                    initial={{ opacity: 0, x: -10 }} 
+                    animate={{ opacity: 1, x: 0 }} 
+                    exit={{ opacity: 0, x: 10 }}
+                    className="space-y-12"
+                  >
+                    {/* Saved Items */}
                     <div className="space-y-6">
-                      {[
-                        { step: 1, text: t('step1') },
-                        { step: 2, text: t('step2') },
-                        { step: 3, text: t('step3') }
-                      ].map((item) => (
-                        <div key={item.step} className="flex gap-4">
-                          <div className="w-8 h-8 rounded-full bg-ios-blue/10 text-ios-blue flex items-center justify-center text-xs font-bold flex-shrink-0">{item.step}</div>
-                          <p className="text-xs text-ios-gray font-medium leading-relaxed">{item.text}</p>
-                        </div>
-                      ))}
+                      <h3 className="rm-section-title">{t('saved_items')}</h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {favorites.length === 0 ? (
+                          <div className="col-span-full ios-card p-12 border-2 border-dashed text-center">
+                            <p className="text-ios-gray text-xs">{t('no_saved_items')}</p>
+                          </div>
+                        ) : (
+                          favorites.map((item) => (
+                            <div key={item.id} onClick={() => setSelectedItem(item)} className="ios-card p-3 group cursor-pointer bg-white">
+                              <div className="aspect-square rounded-xl overflow-hidden mb-2">
+                                <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                              </div>
+                              <h4 className="text-xs font-bold truncate text-ios-label">{item.title}</h4>
+                              <p className="text-xs font-black text-brand-end mt-0.5">€{item.price}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
-                 </div>
-                </div>
-              </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
 

@@ -27,7 +27,7 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false
   },
-  max: 50,
+  max: 5,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });
@@ -45,7 +45,11 @@ async function initDb() {
     client = await pool.connect();
     console.log("DB Connected for background initialization!");
     
-    // 0. Disable RLS for all tables (FIX for 'not showing objects' / 'permission denied')
+    // Ensure all existing items have 'available' status if null
+    console.log("Setting default 'available' status for uninitialized items...");
+    await pool.query("UPDATE items SET status = 'available' WHERE status IS NULL");
+    
+    // Disable RLS for all tables to ensure full visibility during dev
     console.log("Disabling RLS on all tables...");
     await client.query(`
       ALTER TABLE items DISABLE ROW LEVEL SECURITY;
@@ -166,7 +170,7 @@ async function startServer() {
         SELECT i.*, 
         (SELECT COUNT(*) FROM favorites f WHERE f.item_id = i.id) as LikeCount
         FROM items i 
-        WHERE i.status = 'available'
+        WHERE (i.status = 'available' OR i.status IS NULL)
       `;
       const filterParams: any[] = [];
       
@@ -440,7 +444,7 @@ async function startServer() {
     
     // START Background Tasks AFTER listening
     console.log("Starting background database initialization...");
-    // initDb().catch(e => console.error("FATAL background DB init failed:", e));
+    initDb().catch(e => console.error("FATAL background DB init failed:", e));
 
     // Note: This starts Vite as middleware so the frontend is available on port 3000
     if (process.env.NODE_ENV !== "production") {

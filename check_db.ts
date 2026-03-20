@@ -7,25 +7,23 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 async function check() {
-  console.log('Checking items table...');
-  const { data, error, count } = await supabase
-    .from('items')
-    .select('*', { count: 'exact', head: true });
+  console.log("Checking Supabase Items...");
+  const { data, error } = await supabase.from('items').select('id, title, status, seller_id, created_at').limit(20);
   
   if (error) {
-    console.error('Items fetch error:', error);
+    console.error("Error:", error);
+    return;
+  }
+  
+  if (!data || data.length === 0) {
+    console.log("No items found in the 'items' table.");
   } else {
-    console.log('Items found (count):', count);
+    console.log(`Found ${data.length} items:`);
+    console.table(data);
   }
 
-  console.log('\nChecking active user...');
-  const { data: { user } } = await supabase.auth.getUser();
-  console.log('Current user (should be null in scratch session):', user?.id || 'null');
-
-  console.log('\nChecking first 5 items (raw):');
-  const { data: items, error: iErr } = await supabase.from('items').select('*').limit(5);
-  if (iErr) console.error('Raw items error:', iErr);
-  else console.log('Raw items (first 5):', JSON.stringify(items, null, 2));
+  const { count, error: countError } = await supabase.from('items').select('*', { count: 'exact', head: true });
+  console.log("Total items count:", count);
 }
 
 check();
